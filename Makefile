@@ -1,4 +1,4 @@
-.PHONY: help setup sync run test lint format clean
+.PHONY: help setup sync run test lint format package clean
 
 help:
 	@echo "Available commands:"
@@ -8,6 +8,7 @@ help:
 	@echo "  make test    - Run tests"
 	@echo "  make lint    - Run linter (ruff)"
 	@echo "  make format  - Format code (ruff)"
+	@echo "  make package - Build a standalone app in dist/PhonoLab"
 	@echo "  make clean   - Remove virtual environment"
 
 # First-time setup
@@ -29,6 +30,9 @@ lint:
 
 format:
 	uv run ruff format .
+
+package:
+	cd packaging && uv run pyinstaller --noconfirm --distpath ../dist --workpath ../build phonolab.spec
 
 clean:
 	rm -rf .venv
