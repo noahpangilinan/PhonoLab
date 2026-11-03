@@ -222,3 +222,15 @@ def test_script_window_runs_in_worker(window, qtbot, wav):
     assert sw.run_button.text() == "Stop"
     sw.run_or_stop()
     assert "Stopped" in sw.output.toPlainText()
+
+
+def test_figure_dialog_renders_and_saves(window, wav, tmp_path):
+    from phonolab.core.figures import FigureSettings
+    from phonolab.ui.dialogs.figure_dialog import FigureDialog
+
+    window.open_sound(str(wav))
+    window.editor.axis.set_selection(0.1, 0.6)
+    dialog = FigureDialog(window.editor, FigureSettings(dpi=100), window)
+    assert dialog.render_preview() and not dialog.preview.pixmap().isNull()
+    dialog.save(tmp_path / "f.svg")
+    assert (tmp_path / "f.svg").read_text(encoding="utf-8").startswith("<?xml")

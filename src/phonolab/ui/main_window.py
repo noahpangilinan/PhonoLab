@@ -23,12 +23,14 @@ from phonolab import __version__
 from phonolab.audio.player import AudioPlayer
 from phonolab.core import sound_ops
 from phonolab.core.batch import BatchOptions
+from phonolab.core.figures import FigureSettings
 from phonolab.core.registry import ANALYSES
 from phonolab.core.settings import Preferences
 from phonolab.core.sound import SUPPORTED_EXTENSIONS, Sound, SoundLoadError
 from phonolab.core.spectrum import SpectrumSettings
 from phonolab.core.textgrid import TextGrid, TextGridError
 from phonolab.ui.dialogs.batch_dialog import BatchDialog
+from phonolab.ui.dialogs.figure_dialog import FigureDialog
 from phonolab.ui.dialogs.new_textgrid import NewTextGridDialog
 from phonolab.ui.dialogs.record_dialog import RecordDialog
 from phonolab.ui.dialogs.settings_dialog import SettingsDialog
@@ -193,6 +195,7 @@ class MainWindow(QMainWindow):
         self._action(x, "&Intensity table (CSV)…", lambda: self.export_table("intensity"), needs=e)
         self._action(x, "&Annotations (CSV)…", self.export_annotations, needs=tg)
         x.addSeparator()
+        self._action(x, "Publication &figure (PDF, SVG, PNG)…", self.make_figure, "Ctrl+P", needs=e)
         self._action(x, "View as &image (PNG)…", self.export_image, needs=e)
         m.addSeparator()
         self._action(
@@ -364,6 +367,7 @@ class MainWindow(QMainWindow):
             tip="Run Praat scripts or Python on the current sound",
         )
         self._action(m, "&Batch measure folder…", self.batch_measure)
+        self._action(m, "&Figure…", self.make_figure, needs=e)
 
         m = mb.addMenu("&Help")
         self._action(m, "&Keyboard shortcuts", self.show_shortcuts, "Ctrl+/")
@@ -807,6 +811,11 @@ class MainWindow(QMainWindow):
             tg.xmin, tg.xmax, tg.tiers[:] = new.xmin, new.xmax, new.tiers
 
         doc.edit("Script", replace)
+
+    def make_figure(self):
+        dialog = FigureDialog(self.editor, self.prefs.analysis_settings("figure", FigureSettings), self)
+        dialog.exec()
+        self.prefs.set_analysis_settings("figure", dialog.settings())
 
     def batch_measure(self):
         p = self.prefs
