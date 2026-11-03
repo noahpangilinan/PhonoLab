@@ -256,3 +256,23 @@ def test_find_bar_steps_through_matches_and_duplicate_tier(window, wav):
     assert [t.name for t in editor.doc.textgrid.tiers] == ["words", "words_copy"]
     editor.doc.undo_stack.undo()
     assert len(editor.doc.textgrid.tiers) == 1
+
+
+def test_theme_switching_and_preference(qtbot):
+    from PyQt6.QtWidgets import QApplication
+
+    from phonolab.core.settings import MemoryStore, Preferences
+    from phonolab.ui import theme
+
+    app = QApplication.instance()
+    try:
+        assert theme.apply_theme(app, "dark") == "dark"
+        assert theme.COLORS["background"] == theme.THEMES["dark"]["background"]
+        assert app.palette().color(app.palette().ColorRole.Window).name() == "#2b2d31"
+    finally:
+        theme.apply_theme(app, "light")  # other tests expect the light theme
+    assert theme.THEMES["light"] == theme.COLORS
+    prefs = Preferences(MemoryStore())
+    assert prefs.theme() == "system"
+    prefs.set_theme("dark")
+    assert prefs.theme() == "dark"

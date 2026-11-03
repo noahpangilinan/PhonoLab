@@ -59,6 +59,14 @@ class Preferences:
     def set_pane_visible(self, name: str, visible: bool) -> None:
         self.store.setValue(f"view/{name}", json.dumps(bool(visible)))
 
+    def theme(self) -> str:
+        """'system', 'light' or 'dark'."""
+        value = self._json("view/theme", "system")
+        return value if value in ("system", "light", "dark") else "system"
+
+    def set_theme(self, theme: str) -> None:
+        self.store.setValue("view/theme", json.dumps(theme))
+
     def recent_files(self) -> list[str]:
         return [p for p in self._json("recent", []) if isinstance(p, str)]
 

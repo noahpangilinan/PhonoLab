@@ -7,7 +7,7 @@ from pathlib import Path
 
 import parselmouth
 from PyQt6.QtCore import QSettings, Qt
-from PyQt6.QtGui import QAction, QKeySequence, QUndoGroup
+from PyQt6.QtGui import QAction, QActionGroup, QKeySequence, QUndoGroup
 from PyQt6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -41,6 +41,7 @@ from phonolab.ui.log_panel import LogPanel
 from phonolab.ui.script_window import ScriptWindow
 from phonolab.ui.spectrum_panel import SpectrumPanel
 from phonolab.ui.start_page import StartPage
+from phonolab.ui.theme import THEME_CHOICES
 
 log = logging.getLogger(__name__)
 
@@ -240,6 +241,14 @@ class MainWindow(QMainWindow):
             self._layer_actions[name] = action
         m.addSeparator()
         m.addAction(self.info_panel.toggleViewAction())
+        theme_menu = m.addMenu("&Theme")
+        theme_group = QActionGroup(self)
+        for choice in THEME_CHOICES:
+            action = theme_menu.addAction(choice.title(), lambda c=choice: self._set_theme(c))
+            action.setCheckable(True)
+            action.setChecked(choice == self.prefs.theme())
+            theme_group.addAction(action)
+        m.addSeparator()
         m.addAction(self.spectrum_panel.toggleViewAction())
         m.addAction(self.log_panel.toggleViewAction())
 
@@ -434,6 +443,10 @@ class MainWindow(QMainWindow):
     def set_layer(self, name: str, visible: bool):
         for editor in self.editors():
             editor.set_layer_visible(name, visible)
+
+    def _set_theme(self, choice: str):
+        self.prefs.set_theme(choice)
+        self.show_message(f"{choice.title()} theme: restart PhonoLab to apply it everywhere")
 
     def show_message(self, text: str):
         self.statusBar().showMessage(text, 5000)

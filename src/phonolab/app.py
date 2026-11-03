@@ -9,10 +9,12 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 import platformdirs
+from PyQt6.QtCore import QSettings
 from PyQt6.QtWidgets import QApplication, QMessageBox
 
 from phonolab import __version__
-from phonolab.ui.theme import configure_pyqtgraph
+from phonolab.core.settings import Preferences
+from phonolab.ui.theme import apply_theme
 
 log = logging.getLogger("phonolab")
 
@@ -51,7 +53,7 @@ def create_app(argv: list[str]) -> QApplication:
     app.setOrganizationName("PhonoLab")
     app.setApplicationVersion(__version__)
     app.setStyle("Fusion")
-    configure_pyqtgraph()
+    apply_theme(app, Preferences(QSettings()).theme())
     return app
 
 
