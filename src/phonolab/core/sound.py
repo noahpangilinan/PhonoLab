@@ -67,6 +67,13 @@ class Sound:
         self.samples = samples
         self._praat: parselmouth.Sound | None = None
 
+    def __getstate__(self):
+        # Caches (the parselmouth copy, the mono mix) are rebuilt on demand after unpickling.
+        state = self.__dict__.copy()
+        state["_praat"] = None
+        state.pop("mono", None)
+        return state
+
     @classmethod
     def from_file(cls, path: str | Path) -> Sound:
         """Load with libsndfile, then FFmpeg (M4A/AAC and more), then Praat's own reader."""

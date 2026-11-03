@@ -76,6 +76,22 @@ def warm_up() -> None:
         _executor(kind).submit(int, 0)
 
 
+def run_in_worker(kind: str, fn, *args) -> Future:
+    """Run a picklable call in the named worker process (started on first use)."""
+    return _executor(kind).submit(fn, *args)
+
+
+def kill_worker(kind: str) -> None:
+    """Terminate a worker that may be stuck (e.g. a script in an endless loop); it restarts on next use."""
+    ex = _executors.pop(kind, None)
+    if ex is None:
+        return
+    # ProcessPoolExecutor has no public way to stop a running task, so end its processes directly.
+    for process in list(getattr(ex, "_processes", {}).values()):
+        process.terminate()
+    ex.shutdown(wait=False, cancel_futures=True)
+
+
 @atexit.register
 def shutdown() -> None:
     for ex in _executors.values():

@@ -203,3 +203,22 @@ def test_batch_dialog_writes_csv(qtbot, tmp_path):
     qtbot.waitUntil(out.exists, timeout=60000)
     text = out.read_text(encoding="utf-8")
     assert "s0.wav" in text and "s1.wav" in text and "f0_mean_hz" in text
+
+
+def test_script_window_runs_in_worker(window, qtbot, wav):
+    window.open_sound(str(wav))
+    window.show_script_window()
+    sw = window.script_window
+    sw.language.setCurrentIndex(sw.language.findData("python"))
+    sw.editor.setPlainText(
+        "print('hello')\nnew_sounds = [Sound(sound.samples[::2], sound.sampling_rate / 2, title='half')]"
+    )
+    sw.run_or_stop()
+    qtbot.waitUntil(lambda: window.tabs.count() == 2, timeout=30000)
+    assert "hello" in sw.output.toPlainText()
+    # An endless loop can be stopped.
+    sw.editor.setPlainText("while True: pass")
+    sw.run_or_stop()
+    assert sw.run_button.text() == "Stop"
+    sw.run_or_stop()
+    assert "Stopped" in sw.output.toPlainText()

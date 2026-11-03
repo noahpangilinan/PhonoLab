@@ -36,6 +36,7 @@ from phonolab.ui.document import Document
 from phonolab.ui.editor.sound_editor import HIDDEN_BY_DEFAULT, LAYERS, SoundEditor
 from phonolab.ui.info_panel import InfoPanel
 from phonolab.ui.log_panel import LogPanel
+from phonolab.ui.script_window import ScriptWindow
 from phonolab.ui.spectrum_panel import SpectrumPanel
 from phonolab.ui.start_page import StartPage
 
@@ -123,6 +124,7 @@ class MainWindow(QMainWindow):
         self.busy_label = QLabel()
         self.statusBar().addPermanentWidget(self.busy_label)
         self._busy: set[str] = set()
+        self.script_window: ScriptWindow | None = None
 
         self._editor_actions: list[QAction] = []
         self._textgrid_actions: list[QAction] = []
@@ -352,6 +354,16 @@ class MainWindow(QMainWindow):
         self._action(m, "Add &point tier…", lambda: tv().add_tier("point"), needs=tg)
         self._action(m, "&Rename tier…", lambda: tv().rename_tier(), needs=tg)
         self._action(m, "Re&move tier…", lambda: tv().remove_tier(), needs=tg)
+
+        m = mb.addMenu("&Tools")
+        self._action(
+            m,
+            "&Script window…",
+            self.show_script_window,
+            "Ctrl+K",
+            tip="Run Praat scripts or Python on the current sound",
+        )
+        self._action(m, "&Batch measure folder…", self.batch_measure)
 
         m = mb.addMenu("&Help")
         self._action(m, "&Keyboard shortcuts", self.show_shortcuts, "Ctrl+/")
@@ -772,6 +784,29 @@ class MainWindow(QMainWindow):
         if dialog.exec():
             for ed in self.editors():
                 ed.apply_manipulation_settings(dialog.value())
+
+    def show_script_window(self):
+        if self.script_window is None:
+            self.script_window = ScriptWindow(lambda: self.editor, self)
+            self.script_window.result_ready.connect(self._on_script_result)
+        self.script_window.show()
+        self.script_window.raise_()
+        self.script_window.activateWindow()
+
+    def _on_script_result(self, result, editor):
+        for name, samples, sr in result.sounds:
+            self.open_new_sound(Sound(samples, sr, title=name))
+        if result.textgrid is None or editor not in self.editors():
+            return
+        doc, new = editor.doc, result.textgrid
+        if doc.textgrid is None:
+            doc.set_textgrid(new, saved=False)
+            return
+
+        def replace(tg):
+            tg.xmin, tg.xmax, tg.tiers[:] = new.xmin, new.xmax, new.tiers
+
+        doc.edit("Script", replace)
 
     def batch_measure(self):
         p = self.prefs
