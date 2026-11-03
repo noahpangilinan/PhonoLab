@@ -23,6 +23,7 @@ from phonolab.audio.player import AudioPlayer
 from phonolab.core.registry import ANALYSES
 from phonolab.core.settings import Preferences
 from phonolab.core.sound import SUPPORTED_EXTENSIONS, Sound, SoundLoadError
+from phonolab.core.spectrum import SpectrumSettings
 from phonolab.core.textgrid import TextGrid, TextGridError
 from phonolab.ui.dialogs.new_textgrid import NewTextGridDialog
 from phonolab.ui.dialogs.settings_dialog import SettingsDialog
@@ -30,6 +31,7 @@ from phonolab.ui.document import Document
 from phonolab.ui.editor.sound_editor import HIDDEN_BY_DEFAULT, LAYERS, SoundEditor
 from phonolab.ui.info_panel import InfoPanel
 from phonolab.ui.log_panel import LogPanel
+from phonolab.ui.spectrum_panel import SpectrumPanel
 from phonolab.ui.start_page import StartPage
 
 log = logging.getLogger(__name__)
@@ -71,6 +73,7 @@ SHORTCUTS = [
             ("F1", "Formants"),
             ("F8", "Intensity"),
             ("F2", "Duration"),
+            ("F6", "Spectrum"),
             ("Ctrl+Shift+V", "Voice report"),
         ],
     ),
@@ -101,9 +104,14 @@ class MainWindow(QMainWindow):
 
         self.info_panel = InfoPanel(self)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.info_panel)
+        self.spectrum_panel = SpectrumPanel(self.prefs.analysis_settings("spectrum", SpectrumSettings), self)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.spectrum_panel)
+        self.spectrum_panel.hide()
+        self.spectrum_panel.settings_requested.connect(self._edit_spectrum_settings)
         self.log_panel = LogPanel(self)
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.log_panel)
         self.log_panel.hide()
+        self.spectrum_panel.log_message.connect(self.log_panel.append)
 
         self.busy_label = QLabel()
         self.statusBar().addPermanentWidget(self.busy_label)
@@ -206,6 +214,7 @@ class MainWindow(QMainWindow):
             self._layer_actions[name] = action
         m.addSeparator()
         m.addAction(self.info_panel.toggleViewAction())
+        m.addAction(self.spectrum_panel.toggleViewAction())
         m.addAction(self.log_panel.toggleViewAction())
 
         m = mb.addMenu("&Play")
@@ -216,6 +225,7 @@ class MainWindow(QMainWindow):
         m = mb.addMenu("&Analysis")
         for name, (cls, _) in ANALYSES.items():
             self._action(m, f"{cls.title} settings…", lambda _=False, n=name: self.edit_settings(n), needs=e)
+        self._action(m, "Spectrum settings…", self._edit_spectrum_settings)
 
         m = mb.addMenu("&Query")
         self._action(m, "Get &pitch", lambda: self.editor.query_pitch(), "F5", needs=e)
@@ -223,6 +233,15 @@ class MainWindow(QMainWindow):
         self._action(m, "Get &intensity", lambda: self.editor.query_intensity(), "F8", needs=e)
         self._action(m, "Get &duration", lambda: self.editor.query_duration(), "F2", needs=e)
         m.addSeparator()
+        self._action(m, "Spectral &slice / LTAS", self._show_spectrum, "F6", needs=e)
+        self._action(m, "Spectral &moments", lambda: self._show_spectrum(log=True), needs=e)
+        self._action(
+            m,
+            "&CPPS",
+            lambda: self.spectrum_panel.log_cpps(),
+            needs=e,
+            tip="Smoothed cepstral peak prominence over the selection (or visible window)",
+        )
         self._action(
             m, "&Voice report", self._voice_report, "Ctrl+Shift+V", needs=e,
             tip="Jitter, shimmer and harmonicity over the selection (or the visible window)",
@@ -259,6 +278,7 @@ class MainWindow(QMainWindow):
         self.stack.setCurrentWidget(self.tabs if editor else self.start_page)
         self.undo_group.setActiveStack(editor.doc.undo_stack if editor else None)
         self.info_panel.set_editor(editor)
+        self.spectrum_panel.set_editor(editor)
         self._update_actions()
         self._busy.clear()
         self._update_busy()
@@ -534,6 +554,20 @@ class MainWindow(QMainWindow):
             settings = dialog.value()
             for ed in self.editors():
                 ed.apply_settings(name, settings)
+
+    def _show_spectrum(self, log: bool = False):
+        self.spectrum_panel.show()
+        self.spectrum_panel.raise_()
+        self.spectrum_panel.update_spectrum()
+        if log:
+            self.spectrum_panel.log_measurements()
+
+    def _edit_spectrum_settings(self):
+        dialog = SettingsDialog(self.spectrum_panel.settings, self)
+        if dialog.exec():
+            settings = dialog.value()
+            self.prefs.set_analysis_settings("spectrum", settings)
+            self.spectrum_panel.set_settings(settings)
 
     def _voice_report(self):
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)

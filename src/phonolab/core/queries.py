@@ -85,4 +85,6 @@ def intensity_stats(i: IntensityResult, start: float, end: float) -> RangeStats:
 
 
 def fmt(value: float, unit: str, decimals: int = 2) -> str:
-    return "--undefined--" if value is None or np.isnan(value) else f"{value:.{decimals}f} {unit}"
+    if value is None or np.isnan(value):
+        return "--undefined--"
+    return f"{value:.{decimals}f} {unit}" if unit else f"{value:.{decimals}f}"

@@ -138,3 +138,15 @@ def test_pulses_layer_and_voice_report(window, qtbot, wav):
     report = editor.query_voice_report()
     assert report.value("Number of pulses") is not None
     assert "Jitter (local)" in window.log_panel.text.toPlainText()
+
+
+def test_spectrum_panel_follows_selection(window, wav):
+    window.open_sound(str(wav))
+    editor = window.editor
+    window._show_spectrum()
+    editor.axis.set_selection(0.2, 0.4)
+    window.spectrum_panel.update_spectrum()
+    r = window.spectrum_panel.result
+    assert r is not None and (r.start, r.end) == (0.2, 0.4)
+    window.spectrum_panel.log_cpps()
+    assert "CPPS" in window.log_panel.text.toPlainText()

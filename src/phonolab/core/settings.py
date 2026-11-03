@@ -45,8 +45,9 @@ class Preferences:
         except (TypeError, ValueError):
             return default
 
-    def analysis_settings(self, name: str):
-        cls, _ = ANALYSES[name]
+    def analysis_settings(self, name: str, cls=None):
+        """Saved settings for ``name``; ``cls`` is needed for settings outside the analysis registry."""
+        cls = cls or ANALYSES[name][0]
         return settings_from_dict(cls, self._json(f"analysis/{name}", {}))
 
     def set_analysis_settings(self, name: str, settings) -> None:
