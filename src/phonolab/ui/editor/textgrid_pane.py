@@ -146,6 +146,8 @@ class TextGridView(QWidget):
             idx = self._try("Add boundary", lambda tg: tg.tiers[tier_index].add_boundary(t))
             if idx is not None:
                 self.select(tier_index, idx - 1)
+                # Keep the cursor on the new boundary, so Delete right away removes it again.
+                self.axis.set_cursor(t)
         else:
             idx = self._try("Add point", lambda tg: tg.tiers[tier_index].add_point(t))
             if idx is not None:

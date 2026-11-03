@@ -5,6 +5,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import numpy as np  # noqa: E402
 import pytest  # noqa: E402
 from PyQt6.QtCore import QSettings, Qt  # noqa: E402
+from PyQt6.QtGui import QAction  # noqa: E402
 from PyQt6.QtWidgets import QMessageBox  # noqa: E402
 
 from phonolab.core.textgrid import TextGrid  # noqa: E402
@@ -276,3 +277,20 @@ def test_theme_switching_and_preference(qtbot):
     assert prefs.theme() == "system"
     prefs.set_theme("dark")
     assert prefs.theme() == "dark"
+
+
+def test_alt_backspace_removes_boundary_not_undo(window, qtbot, wav):
+    window.open_sound(str(wav))
+    editor = window.editor
+    editor.doc.set_textgrid(TextGrid.for_duration(1.0, ["words"]))
+    view = editor.textgrid_view
+    view.setFocus()
+    editor.axis.set_cursor(0.3)
+    qtbot.keyClick(view, Qt.Key.Key_Return)
+    editor.axis.set_cursor(0.6)
+    qtbot.keyClick(view, Qt.Key.Key_Return)
+    qtbot.keyClick(view, Qt.Key.Key_Backspace, Qt.KeyboardModifier.AltModifier)
+    # The boundary at the cursor (0.6) is removed; the one at 0.3 stays.
+    assert editor.doc.textgrid.tiers[0].boundaries == [pytest.approx(0.3)]
+    shortcuts = {a.text(): [k.toString() for k in a.shortcuts()] for a in window.findChildren(QAction)}
+    assert shortcuts["&Quit"] == ["Ctrl+Q"]

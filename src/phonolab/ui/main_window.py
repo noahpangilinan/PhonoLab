@@ -211,11 +211,13 @@ class MainWindow(QMainWindow):
         self._action(
             m, "&Close", lambda: self.close_tab(self.tabs.currentIndex()), QKeySequence.StandardKey.Close, needs=e
         )
-        self._action(m, "&Quit", self.close, QKeySequence.StandardKey.Quit)
+        # Explicit: Qt's standard Quit binding is empty on Windows.
+        self._action(m, "&Quit", self.close, "Ctrl+Q")
 
         m = mb.addMenu("&Edit")
         undo = self.undo_group.createUndoAction(self, "&Undo")
-        undo.setShortcut(QKeySequence.StandardKey.Undo)
+        # Not StandardKey.Undo: on Windows it includes Alt+Backspace, which removes a boundary here.
+        undo.setShortcut(QKeySequence("Ctrl+Z"))
         redo = self.undo_group.createRedoAction(self, "&Redo")
         redo.setShortcuts([QKeySequence("Ctrl+Shift+Z"), QKeySequence("Ctrl+Y")])
         m.addActions([undo, redo])
