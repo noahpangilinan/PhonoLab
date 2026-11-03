@@ -19,7 +19,7 @@ from multiprocessing import shared_memory
 import numpy as np
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from phonolab.core import analysis
+from phonolab.core import registry
 from phonolab.core.sound import Sound
 
 log = logging.getLogger(__name__)
@@ -48,10 +48,10 @@ def _attach(shm_name: str, n_samples: int, sampling_rate: float) -> Sound:
     return sound
 
 
-def _run_analysis(shm_name: str, n_samples: int, sampling_rate: float, name: str, settings, extra: tuple):
+def _run_analysis(shm_name: str, n_samples: int, sampling_rate: float, name: str, args: tuple):
     sound = _attach(shm_name, n_samples, sampling_rate)
-    _, fn = analysis.ANALYSES[name]
-    return fn(sound, settings, *extra)
+    _, fn = registry.ANALYSES[name]
+    return fn(sound, *args)
 
 
 # ---------------------------------------------------------------- GUI process side
@@ -142,9 +142,10 @@ class AnalysisManager(QObject):
 
     def update_settings(self, name: str, settings) -> None:
         self.settings[name] = settings
-        self.results.pop(name, None)
-        if name in self.enabled:
-            self.request(name)
+        for affected in (name, *registry.dependents(name)):
+            self.results.pop(affected, None)
+            if affected in self.enabled:
+                self.request(affected)
 
     def set_spectrogram_range(self, start: float, end: float) -> None:
         self._spectrogram_range = (start, end)
@@ -164,7 +165,7 @@ class AnalysisManager(QObject):
         try:
             fut = _executor(kind).submit(
                 _run_analysis, shared.shm.name, shared.n_samples, shared.sampling_rate,
-                name, self.settings[name], extra,
+                name, (*registry.compute_args(name, self.settings), *extra),
             )  # fmt: skip
         except RuntimeError as e:  # pool shut down or broken
             self.error.emit(name, str(e))
@@ -190,8 +191,7 @@ class AnalysisManager(QObject):
 
     def compute_now(self, name: str):
         """Compute synchronously in this process (for queries on hidden layers)."""
-        _, fn = analysis.ANALYSES[name]
-        self.results[name] = fn(self.sound, self.settings[name])
+        self.results[name] = registry.compute(name, self.sound, self.settings)
         return self.results[name]
 
     def _on_done(self, name: str, token: int, result):

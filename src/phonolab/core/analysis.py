@@ -11,6 +11,7 @@ from dataclasses import dataclass, field, fields
 from enum import Enum
 
 import numpy as np
+import parselmouth
 from parselmouth.praat import call
 
 from phonolab.core.sound import Sound
@@ -132,9 +133,10 @@ class PitchResult:
     strengths: np.ndarray
 
 
-def compute_pitch(sound: Sound, s: PitchSettings) -> PitchResult:
-    method = sound.praat.to_pitch_ac if s.method is PitchMethod.AUTOCORRELATION else sound.praat.to_pitch_cc
-    pitch = method(
+def praat_pitch(snd: parselmouth.Sound, s: PitchSettings) -> parselmouth.Pitch:
+    """A Praat Pitch object for ``snd`` with these settings."""
+    method = snd.to_pitch_ac if s.method is PitchMethod.AUTOCORRELATION else snd.to_pitch_cc
+    return method(
         pitch_floor=s.floor,
         pitch_ceiling=s.ceiling,
         max_number_of_candidates=s.max_candidates,
@@ -145,6 +147,10 @@ def compute_pitch(sound: Sound, s: PitchSettings) -> PitchResult:
         octave_jump_cost=s.octave_jump_cost,
         voiced_unvoiced_cost=s.voiced_unvoiced_cost,
     )
+
+
+def compute_pitch(sound: Sound, s: PitchSettings) -> PitchResult:
+    pitch = praat_pitch(sound.praat, s)
     sel = pitch.selected_array
     freqs = sel["frequency"].astype(float)
     freqs[freqs == 0] = np.nan
@@ -212,11 +218,3 @@ def compute_intensity(sound: Sound, s: IntensitySettings) -> IntensityResult:
         return IntensityResult(np.array([]), np.array([]))
     intensity = sound.praat.to_intensity(minimum_pitch=s.minimum_pitch, subtract_mean=s.subtract_mean)
     return IntensityResult(np.asarray(intensity.xs()), np.asarray(intensity.values[0]))
-
-
-ANALYSES = {
-    "spectrogram": (SpectrogramSettings, compute_spectrogram),
-    "pitch": (PitchSettings, compute_pitch),
-    "formants": (FormantSettings, compute_formants),
-    "intensity": (IntensitySettings, compute_intensity),
-}

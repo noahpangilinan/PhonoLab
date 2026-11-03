@@ -12,6 +12,7 @@ COLORS = {
     "pitch": "#1f77d4",
     "formant": "#e0261b",
     "intensity": "#d4a017",
+    "pulses": "#1f77d4",
     "boundary": "#1f3a5f",
     "boundary_hover": "#d62728",
     "tier_selected": (31, 119, 180, 28),

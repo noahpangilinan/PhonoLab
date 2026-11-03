@@ -1,0 +1,79 @@
+"""Glottal pulses and Praat's voice report (jitter, shimmer, harmonicity)."""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+
+import numpy as np
+from parselmouth.praat import call
+
+from phonolab.core.analysis import PitchSettings, praat_pitch, setting
+from phonolab.core.sound import Sound
+
+
+@dataclass(frozen=True)
+class VoiceSettings:
+    title = "Voice (pulses, jitter, shimmer)"
+    max_period_factor: float = setting(1.3, "Maximum period factor", "", 1.0, 10.0)
+    max_amplitude_factor: float = setting(1.6, "Maximum amplitude factor", "", 1.0, 10.0)
+
+
+@dataclass(frozen=True)
+class PulsesResult:
+    times: np.ndarray
+
+
+def compute_pulses(sound: Sound, _settings: VoiceSettings, pitch: PitchSettings) -> PulsesResult:
+    """Glottal pulse times, as Praat's "To PointProcess (cc)" finds them."""
+    snd = sound.praat
+    pulses = call([snd, praat_pitch(snd, pitch)], "To PointProcess (cc)")
+    if call(pulses, "Get number of points") == 0:
+        return PulsesResult(np.zeros(0))
+    return PulsesResult(np.asarray(call(pulses, "To Matrix").values[0]))
+
+
+@dataclass(frozen=True)
+class VoiceReport:
+    text: str  # exactly what Praat prints
+    sections: dict[str, list[tuple[str, str]]]  # section -> [(measure, value)]
+
+    def value(self, measure: str) -> str | None:
+        for rows in self.sections.values():
+            for name, value in rows:
+                if name == measure:
+                    return value
+        return None
+
+
+_ROW = re.compile(r"^\s+([^:]+):\s*(.*)$")
+
+
+def parse_report(text: str) -> dict[str, list[tuple[str, str]]]:
+    sections: dict[str, list[tuple[str, str]]] = {}
+    current = "General"
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        if not line.startswith(" ") and line.rstrip().endswith(":"):
+            current = line.strip().rstrip(":")
+            continue
+        if m := _ROW.match(line):
+            sections.setdefault(current, []).append((m.group(1).strip(), m.group(2).strip()))
+    return sections
+
+
+def voice_report(sound: Sound, pitch: PitchSettings, voice: VoiceSettings, start: float, end: float) -> VoiceReport:
+    """Praat's "Voice report" for [start, end], analysed with a margin like Praat's editor does."""
+    start, end = sorted((start, end))
+    margin = 3.0 / pitch.floor  # enough context for the pitch analysis at the edges
+    snd = sound.praat.extract_part(
+        from_time=max(0.0, start - margin), to_time=min(sound.duration, end + margin), preserve_times=True
+    )
+    pitch_obj = praat_pitch(snd, pitch)
+    pulses = call([snd, pitch_obj], "To PointProcess (cc)")
+    text = call(
+        [snd, pitch_obj, pulses], "Voice report", start, end, pitch.floor, pitch.ceiling,
+        voice.max_period_factor, voice.max_amplitude_factor, pitch.silence_threshold, pitch.voicing_threshold,
+    )  # fmt: skip
+    return VoiceReport(text, parse_report(text))

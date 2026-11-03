@@ -126,3 +126,15 @@ def test_ipa_palette_inserts_into_label(window, wav):
     editor.textgrid_view.select(0, 0)
     editor._insert_symbol("ə")
     assert doc.textgrid.tiers[0].intervals[0].text == "ə"
+
+
+def test_pulses_layer_and_voice_report(window, qtbot, wav):
+    window.open_sound(str(wav))
+    editor = window.editor
+    assert not editor.layer_visible("pulses")  # off by default, as in Praat
+    editor.set_layer_visible("pulses", True)
+    qtbot.waitUntil(lambda: len(editor.waveform.pulse_times) > 50, timeout=10000)
+    editor.axis.set_selection(0.2, 0.8)
+    report = editor.query_voice_report()
+    assert report.value("Number of pulses") is not None
+    assert "Jitter (local)" in window.log_panel.text.toPlainText()

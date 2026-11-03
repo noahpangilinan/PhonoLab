@@ -21,7 +21,7 @@ from PyQt6.QtWidgets import (
 )
 
 from phonolab.audio.player import AudioPlayer
-from phonolab.core import analysis, queries
+from phonolab.core import queries, registry, voice
 from phonolab.core.queries import fmt
 from phonolab.core.settings import Preferences
 from phonolab.core.textgrid import IntervalTier, TextGridError
@@ -36,7 +36,9 @@ from phonolab.ui.theme import COLORS
 from phonolab.ui.workers import AnalysisManager
 
 PLAYHEAD_INTERVAL_MS = 16
-LAYERS = ("waveform", "spectrogram", "pitch", "formants", "intensity")
+LAYERS = ("waveform", "spectrogram", "pitch", "formants", "intensity", "pulses")
+# Layers hidden until the user turns them on (like Praat, which hides pulses by default).
+HIDDEN_BY_DEFAULT = {"pulses"}
 
 
 class _OverviewBox(pg.ViewBox):
@@ -106,12 +108,13 @@ class SoundEditor(QWidget):
         self.player = player
         sound = doc.sound
         self.axis = TimeAxisController(sound.duration, self)
-        self.manager = AnalysisManager(sound, {name: prefs.analysis_settings(name) for name in analysis.ANALYSES}, self)
+        self.manager = AnalysisManager(sound, {name: prefs.analysis_settings(name) for name in registry.ANALYSES}, self)
         self.manager.busy_changed.connect(self.busy_changed)
         self.manager.error.connect(lambda name, msg: self.message.emit(f"{name.title()} failed: {msg}"))
 
         self.overview = OverviewStrip(self.axis, sound)
         self.waveform = WaveformPane(self.axis, sound)
+        self.manager.result_ready.connect(self._on_result)
         self.spectrogram = SpectrogramPane(self.axis, self.manager)
         self.panes = [self.waveform, self.spectrogram]
         self.splitter = QSplitter(Qt.Orientation.Vertical)
@@ -167,7 +170,7 @@ class SoundEditor(QWidget):
         self._playing = False
 
         for name in LAYERS:
-            self.set_layer_visible(name, prefs.pane_visible(name))
+            self.set_layer_visible(name, prefs.pane_visible(name, name not in HIDDEN_BY_DEFAULT))
         self._on_textgrid_changed()
         self._sync_scrollbar(*self.axis.view)
 
@@ -198,14 +201,21 @@ class SoundEditor(QWidget):
         self.prefs.set_pane_visible(name, visible)
         if name == "waveform":
             self.waveform.setVisible(visible)
+        elif name == "pulses":
+            self.waveform.set_pulses_visible(visible)
+            self.manager.set_enabled("pulses", visible)
         else:
             self.spectrogram.set_layer_visible(name, visible)
             any_layer = any(self.spectrogram.visible[n] for n in SpectrogramPane.LAYERS)
             self.spectrogram.setVisible(any_layer)
 
+    def _on_result(self, name: str):
+        if name == "pulses":
+            self.waveform.set_pulses(self.manager.results["pulses"].times)
+
     def layer_visible(self, name: str) -> bool:
-        if name == "waveform":
-            return self.prefs.pane_visible("waveform")
+        if name in ("waveform", "pulses"):
+            return self.prefs.pane_visible(name, name not in HIDDEN_BY_DEFAULT)
         return self.spectrogram.visible[name]
 
     def apply_settings(self, name: str, settings):
@@ -343,6 +353,16 @@ class SoundEditor(QWidget):
             )
         else:
             self.log.emit(f"Intensity at {self._where()}: {fmt(queries.intensity_at(r, self.axis.cursor), 'dB')}")
+
+    def query_voice_report(self):
+        """Praat's voice report over the selection (or the visible window)."""
+        start, end = self.axis.selection or self.axis.view
+        report = voice.voice_report(
+            self.doc.sound, self.manager.settings["pitch"], self.manager.settings["pulses"], start, end
+        )
+        header = f"Voice report for {self.doc.sound.name}, {start:.4f}–{end:.4f} s:"
+        self.log.emit(f"{header}\n{report.text.rstrip()}\n")
+        return report
 
     def query_duration(self):
         if self.axis.selection:

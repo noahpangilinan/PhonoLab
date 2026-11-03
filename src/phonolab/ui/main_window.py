@@ -20,14 +20,14 @@ from PyQt6.QtWidgets import (
 
 from phonolab import __version__
 from phonolab.audio.player import AudioPlayer
-from phonolab.core.analysis import ANALYSES
+from phonolab.core.registry import ANALYSES
 from phonolab.core.settings import Preferences
 from phonolab.core.sound import SUPPORTED_EXTENSIONS, Sound, SoundLoadError
 from phonolab.core.textgrid import TextGrid, TextGridError
 from phonolab.ui.dialogs.new_textgrid import NewTextGridDialog
 from phonolab.ui.dialogs.settings_dialog import SettingsDialog
 from phonolab.ui.document import Document
-from phonolab.ui.editor.sound_editor import LAYERS, SoundEditor
+from phonolab.ui.editor.sound_editor import HIDDEN_BY_DEFAULT, LAYERS, SoundEditor
 from phonolab.ui.info_panel import InfoPanel
 from phonolab.ui.log_panel import LogPanel
 from phonolab.ui.start_page import StartPage
@@ -66,7 +66,13 @@ SHORTCUTS = [
     ),
     (
         "Measurements",
-        [("F5", "Pitch at cursor or over selection"), ("F1", "Formants"), ("F8", "Intensity"), ("F2", "Duration")],
+        [
+            ("F5", "Pitch at cursor or over selection"),
+            ("F1", "Formants"),
+            ("F8", "Intensity"),
+            ("F2", "Duration"),
+            ("Ctrl+Shift+V", "Voice report"),
+        ],
     ),
 ]
 
@@ -196,7 +202,7 @@ class MainWindow(QMainWindow):
         m.addSeparator()
         for name in LAYERS:
             action = self._action(m, f"Show {name}", lambda on, n=name: self.set_layer(n, on), needs=e, checkable=True)
-            action.setChecked(self.prefs.pane_visible(name))
+            action.setChecked(self.prefs.pane_visible(name, name not in HIDDEN_BY_DEFAULT))
             self._layer_actions[name] = action
         m.addSeparator()
         m.addAction(self.info_panel.toggleViewAction())
@@ -216,6 +222,11 @@ class MainWindow(QMainWindow):
         self._action(m, "Get &formants", lambda: self.editor.query_formants(), "F1", needs=e)
         self._action(m, "Get &intensity", lambda: self.editor.query_intensity(), "F8", needs=e)
         self._action(m, "Get &duration", lambda: self.editor.query_duration(), "F2", needs=e)
+        m.addSeparator()
+        self._action(
+            m, "&Voice report", self._voice_report, "Ctrl+Shift+V", needs=e,
+            tip="Jitter, shimmer and harmonicity over the selection (or the visible window)",
+        )  # fmt: skip
 
         m = mb.addMenu("A&nnotate")
         tv = lambda: self.editor.textgrid_view  # noqa: E731
@@ -523,6 +534,16 @@ class MainWindow(QMainWindow):
             settings = dialog.value()
             for ed in self.editors():
                 ed.apply_settings(name, settings)
+
+    def _voice_report(self):
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            self.editor.query_voice_report()
+        except Exception as err:  # Praat raises PraatError for e.g. too-short selections
+            QApplication.restoreOverrideCursor()
+            QMessageBox.warning(self, "Voice report", f"Could not compute a voice report: {err}")
+            return
+        QApplication.restoreOverrideCursor()
 
     def show_shortcuts(self):
         html = ["<table cellspacing=4>"]

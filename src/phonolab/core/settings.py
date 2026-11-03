@@ -10,7 +10,8 @@ import json
 from pathlib import Path
 from typing import Protocol
 
-from phonolab.core.analysis import ANALYSES, settings_from_dict, settings_to_dict
+from phonolab.core.analysis import settings_from_dict, settings_to_dict
+from phonolab.core.registry import ANALYSES
 
 MAX_RECENT = 10
 

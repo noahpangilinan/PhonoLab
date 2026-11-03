@@ -10,6 +10,7 @@ from phonolab.ui.editor.base_pane import TimePane
 from phonolab.ui.theme import COLORS
 
 ENVELOPE_BLOCK = 256  # samples per block in the precomputed envelope
+MAX_VISIBLE_PULSES = 3000  # beyond this the marks merge into a solid block anyway
 
 
 class Envelope:
@@ -77,7 +78,30 @@ class WaveformPane(TimePane):
         if n > 1:
             labels = [(-spacing * c, f"ch {c + 1}") for c in range(n)]
             self.getPlotItem().getAxis("left").setTicks([labels, []])
+        # Glottal pulses: one vertical mark per pulse across all channels, as in Praat.
+        self.pulse_marks = pg.PlotDataItem(pen=pg.mkPen(COLORS["pulses"], width=1), connect="pairs")
+        self.pulse_marks.setZValue(5)
+        self.addItem(self.pulse_marks)
+        self._pulse_span = (-spacing * (n - 1) - self.peak, self.peak)
+        self.pulse_times = np.zeros(0)
         self.view_updated(*axis.view)
+
+    def set_pulses(self, times: np.ndarray | None):
+        self.pulse_times = np.zeros(0) if times is None else times
+        self._update_pulses(*self.axis.view)
+
+    def _update_pulses(self, start, end):
+        t = self.pulse_times
+        visible = t[np.searchsorted(t, start) : np.searchsorted(t, end)]
+        if not self.pulse_marks.isVisible() or len(visible) == 0 or len(visible) > MAX_VISIBLE_PULSES:
+            self.pulse_marks.setData([], [])
+            return
+        lo, hi = self._pulse_span
+        self.pulse_marks.setData(np.repeat(visible, 2), np.tile([lo, hi], len(visible)))
+
+    def set_pulses_visible(self, visible: bool):
+        self.pulse_marks.setVisible(visible)
+        self._update_pulses(*self.axis.view)
 
     def view_updated(self, start, end):
         if not self.curves:
@@ -86,6 +110,7 @@ class WaveformPane(TimePane):
         for env, curve in zip(self.envelopes, self.curves, strict=True):
             x, y = env.render(start, end, width)
             curve.setData(x, y)
+        self._update_pulses(start, end)
 
     def resizeEvent(self, ev):  # noqa: N802
         super().resizeEvent(ev)
