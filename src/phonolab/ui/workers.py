@@ -202,7 +202,8 @@ class AnalysisManager(QObject):
 
         def finished(f: Future):
             # Runs on the executor's management thread; Qt queues the signal to the GUI thread.
-            if f.cancelled():
+            # A closed document's shared memory is gone, so its pending jobs fail: ignore them.
+            if f.cancelled() or shared.shm is None:
                 return
             try:
                 if (exc := f.exception()) is not None:
@@ -230,7 +231,7 @@ class AnalysisManager(QObject):
         signals = self._job_signals
 
         def finished(f: Future):
-            if f.cancelled():
+            if f.cancelled() or shared.shm is None:  # cancelled, or the document closed
                 return
             try:
                 if (exc := f.exception()) is not None:

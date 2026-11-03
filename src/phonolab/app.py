@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import QApplication, QMessageBox
 
 from phonolab import __version__
 from phonolab.core.settings import Preferences
+from phonolab.ui.icon import app_icon
 from phonolab.ui.theme import apply_theme
 
 log = logging.getLogger("phonolab")
@@ -52,6 +53,7 @@ def create_app(argv: list[str]) -> QApplication:
     app.setApplicationName("PhonoLab")
     app.setOrganizationName("PhonoLab")
     app.setApplicationVersion(__version__)
+    app.setWindowIcon(app_icon())
     app.setStyle("Fusion")
     apply_theme(app, Preferences(QSettings()).theme())
     return app

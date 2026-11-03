@@ -45,6 +45,8 @@ class TextGridView(QWidget):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.label_font = QFont(self.font())
         self.label_font.setPointSizeF(self.font().pointSizeF() * 1.15)
+        self.kind_font = QFont(self.font())
+        self.kind_font.setPointSizeF(self.font().pointSizeF() * 0.85)
         for sig in (axis.view_changed, axis.cursor_changed, axis.selection_changed):
             sig.connect(self.update)
         doc.textgrid_changed.connect(self._on_textgrid_changed)
@@ -266,11 +268,14 @@ class TextGridView(QWidget):
                 p.fontMetrics().elidedText(tier.name, Qt.TextElideMode.ElideRight, int(left - 8)),
             )
             p.setPen(QColor(COLORS["muted"]))
+            p.setFont(self.kind_font)
+            kind = "intervals" if isinstance(tier, IntervalTier) else "points"
             p.drawText(
                 QRectF(right + 4, top, w - right - 6, TIER_HEIGHT),
                 Qt.AlignmentFlag.AlignVCenter,
-                "intervals" if isinstance(tier, IntervalTier) else "points",
+                p.fontMetrics().elidedText(kind, Qt.TextElideMode.ElideRight, int(w - right - 6)),
             )
+            p.setFont(self.font())
             p.setPen(QPen(QColor(COLORS["muted"]), 1))
             p.drawLine(QPointF(0, top + TIER_HEIGHT), QPointF(w, top + TIER_HEIGHT))
         p.drawLine(QPointF(left, 0), QPointF(left, self.height()))

@@ -269,7 +269,7 @@ def test_theme_switching_and_preference(qtbot):
     try:
         assert theme.apply_theme(app, "dark") == "dark"
         assert theme.COLORS["background"] == theme.THEMES["dark"]["background"]
-        assert app.palette().color(app.palette().ColorRole.Window).name() == "#2b2d31"
+        assert app.palette().color(app.palette().ColorRole.Window).name() == theme.UI["dark"]["window"]
     finally:
         theme.apply_theme(app, "light")  # other tests expect the light theme
     assert theme.THEMES["light"] == theme.COLORS
@@ -313,3 +313,13 @@ def test_voicing_bar_and_tier(window, qtbot, tmp_path):
     assert tier.name == "voicing" and [iv.text for iv in tier.intervals][1:4] == ["V", "U", "V"]
     editor.doc.undo_stack.undo()
     assert editor.doc.textgrid.tiers == []
+
+
+def test_docks_hidden_on_start_page_and_restored(window, wav):
+    assert not window.info_panel.isVisible()  # start page
+    window.open_sound(str(wav))
+    assert window.info_panel.isVisible()
+    window.close_tab(0)
+    assert not window.info_panel.isVisible()
+    window.open_sound(str(wav))
+    assert window.info_panel.isVisible()

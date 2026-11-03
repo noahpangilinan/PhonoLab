@@ -53,15 +53,17 @@ class SpectrumPanel(QDockWidget):
         layout.addLayout(top)
 
         self.plot = pg.PlotWidget()
-        self.plot.setMinimumHeight(180)
+        self.plot.setMinimumHeight(170)  # grows with the dock; small enough to never overlap the summary
         self.plot.setMenuEnabled(False)
         self.plot.hideButtons()
         self.plot.showGrid(x=True, y=True, alpha=0.25)
         self.plot.setLabel("bottom", "Frequency (Hz)")
         self.plot.setLabel("left", "Level (dB)")
         self.plot.getAxis("bottom").enableAutoSIPrefix(False)
+        self.plot.getAxis("bottom").setHeight(42)  # room for tick labels and the axis title
         self.curve = self.plot.plot(pen=pg.mkPen(COLORS["waveform"], width=1.5))
         layout.addWidget(self.plot, 1)
+        layout.addSpacing(4)
 
         self.summary = QLabel()
         self.summary.setWordWrap(True)

@@ -178,8 +178,9 @@ class SoundEditor(QWidget):
         self.axis.view_changed.connect(self._sync_scrollbar)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(2)
+        self.setObjectName("editorPage")
+        layout.setContentsMargins(8, 6, 8, 4)
+        layout.setSpacing(4)
         layout.addWidget(self.overview)
         layout.addWidget(self.splitter, 1)
         layout.addWidget(self.voicing_bar)

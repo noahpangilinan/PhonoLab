@@ -26,6 +26,7 @@ exe = EXE(
     [],
     name="PhonoLab",
     console=False,
+    icon="phonolab.ico",  # regenerate with: uv run python make_icon.py
     upx=False,
     runtime_tmpdir=None,
 )

@@ -106,6 +106,8 @@ class MainWindow(QMainWindow):
         self.start_page = StartPage()
         self.start_page.open_requested.connect(self.open_dialog)
         self.start_page.open_path.connect(self.open_sound)
+        self.start_page.record_requested.connect(self.record)
+        self.start_page.batch_requested.connect(self.batch_measure)
         self.tabs = QTabWidget(documentMode=True, tabsClosable=True, movable=True)
         self.tabs.tabCloseRequested.connect(self.close_tab)
         self.tabs.currentChanged.connect(self._on_tab_changed)
@@ -129,6 +131,7 @@ class MainWindow(QMainWindow):
         self.statusBar().addPermanentWidget(self.busy_label)
         self._busy: set[str] = set()
         self.script_window: ScriptWindow | None = None
+        self._hidden_docks: list | None = None  # docks hidden while the start page shows
 
         self._editor_actions: list[QAction] = []
         self._textgrid_actions: list[QAction] = []
@@ -142,7 +145,11 @@ class MainWindow(QMainWindow):
             self.restoreGeometry(geometry)
         state = self.qsettings.value("window/state")
         if state is not None:
+            # restoreState sets each dock's visibility; record that layout afresh and hide it again,
+            # since the start page shows first. It comes back when a document opens.
             self.restoreState(state)
+            self._hidden_docks = None
+            self._show_docks(False)
 
     # ------------------------------------------------------------------ menus
 
@@ -412,6 +419,7 @@ class MainWindow(QMainWindow):
     def _on_tab_changed(self, _index=None):
         editor = self.editor
         self.stack.setCurrentWidget(self.tabs if editor else self.start_page)
+        self._show_docks(editor is not None)
         self.undo_group.setActiveStack(editor.doc.undo_stack if editor else None)
         self.info_panel.set_editor(editor)
         self.spectrum_panel.set_editor(editor)
@@ -420,6 +428,19 @@ class MainWindow(QMainWindow):
         self._update_busy()
         if editor:
             editor.setFocus()
+
+    def _show_docks(self, show: bool):
+        """Hide the docks on the start page (they'd be empty) and bring back the same ones later."""
+        docks = (self.info_panel, self.spectrum_panel, self.log_panel)
+        if not show and self._hidden_docks is None:
+            # isHidden(), not isVisible(): before the window is first shown nothing is "visible".
+            self._hidden_docks = [d for d in docks if not d.isHidden()]
+            for d in self._hidden_docks:
+                d.hide()
+        elif show and self._hidden_docks is not None:
+            for d in self._hidden_docks:
+                d.show()
+            self._hidden_docks = None
 
     def _update_actions(self):
         editor = self.editor
@@ -740,6 +761,7 @@ class MainWindow(QMainWindow):
         for editor in self.editors():
             editor.manager.close()
         self.qsettings.setValue("window/geometry", self.saveGeometry())
+        self._show_docks(True)  # save the user's dock layout, not the start page's
         self.qsettings.setValue("window/state", self.saveState())
         ev.accept()
 
