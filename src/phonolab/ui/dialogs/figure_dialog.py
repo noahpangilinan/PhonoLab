@@ -31,7 +31,13 @@ from phonolab.ui.dialogs.settings_dialog import SettingsForm
 
 PREVIEW_DPI = 90
 PREVIEW_DELAY_MS = 300
-PANEL_LABELS = {"waveform": "Waveform", "spectrogram": "Spectrogram", "pitch": "Pitch contour", "textgrid": "TextGrid"}
+PANEL_LABELS = {
+    "waveform": "Waveform",
+    "spectrogram": "Spectrogram",
+    "pitch": "Pitch contour",
+    "voicing": "Voicing bar",
+    "textgrid": "TextGrid",
+}
 
 
 class FigureDialog(QDialog):

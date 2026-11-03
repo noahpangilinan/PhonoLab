@@ -375,6 +375,13 @@ class MainWindow(QMainWindow):
         self._action(m, "Add &point tier…", lambda: tv().add_tier("point"), needs=tg)
         self._action(m, "&Rename tier…", lambda: tv().rename_tier(), needs=tg)
         self._action(m, "D&uplicate tier", lambda: tv().duplicate_tier(), needs=tg)
+        self._action(
+            m,
+            "Add &voicing tier",
+            lambda: self.editor.add_voicing_tier(),
+            needs=e,
+            tip="A tier of voiced (V) and unvoiced (U) intervals from the glottal pulses",
+        )
         self._action(m, "Re&move tier…", lambda: tv().remove_tier(), needs=tg)
 
         m = mb.addMenu("&Tools")

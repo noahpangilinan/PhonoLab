@@ -25,6 +25,9 @@ THEMES = {
         "tier_selected": (31, 119, 180, 28),
         "interval_selected": (255, 196, 0, 110),
         "muted": "#7b8794",
+        "track": "#eef1f5",
+        "voiced": "#9cc3ea",
+        "voiced_edge": "#4a86c5",
     },
     "dark": {
         "background": "#1e1f22",
@@ -43,6 +46,9 @@ THEMES = {
         "tier_selected": (77, 171, 247, 40),
         "interval_selected": (255, 196, 0, 80),
         "muted": "#8a94a3",
+        "track": "#26282d",
+        "voiced": "#2f5f8f",
+        "voiced_edge": "#6aa7e0",
     },
 }
 THEME_CHOICES = ("system", "light", "dark")

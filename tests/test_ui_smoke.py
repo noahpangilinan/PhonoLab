@@ -294,3 +294,22 @@ def test_alt_backspace_removes_boundary_not_undo(window, qtbot, wav):
     assert editor.doc.textgrid.tiers[0].boundaries == [pytest.approx(0.3)]
     shortcuts = {a.text(): [k.toString() for k in a.shortcuts()] for a in window.findChildren(QAction)}
     assert shortcuts["&Quit"] == ["Ctrl+Q"]
+
+
+def test_voicing_bar_and_tier(window, qtbot, tmp_path):
+    from phonolab.core.sound import Sound
+
+    x = np.concatenate([make_vowel(duration=0.3).mono, np.zeros(4800), make_vowel(duration=0.3).mono])
+    path = tmp_path / "vuv.wav"
+    Sound(x, 16000).save(path)
+    window.open_sound(str(path))
+    editor = window.editor
+    assert editor.layer_visible("voicing")  # on by default
+    qtbot.waitUntil(lambda: editor.voicing_bar.result is not None, timeout=15000)
+    assert len(editor.voicing_bar.result.starts) == 2
+    assert editor.readout(0.1, None)["Voicing"] == "voiced"
+    editor.add_voicing_tier()
+    tier = editor.doc.textgrid.tiers[-1]
+    assert tier.name == "voicing" and [iv.text for iv in tier.intervals][1:4] == ["V", "U", "V"]
+    editor.doc.undo_stack.undo()
+    assert editor.doc.textgrid.tiers == []
