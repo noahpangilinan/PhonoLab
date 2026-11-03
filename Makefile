@@ -1,7 +1,3 @@
-# ---- Config ----
-PACKAGE = phonolab.ui.main_window
-PYTHON = python
-
 .PHONY: help setup sync run test lint format clean
 
 help:
@@ -23,10 +19,10 @@ sync:
 	uv sync
 
 run:
-	uv run $(PYTHON) -m $(PACKAGE)
+	uv run phonolab
 
 test:
-	uv run pytest
+	QT_QPA_PLATFORM=offscreen uv run pytest
 
 lint:
 	uv run ruff check .
