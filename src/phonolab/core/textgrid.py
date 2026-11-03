@@ -7,6 +7,8 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from phonolab.core.ipa import to_unicode
+
 # Two boundaries closer than this are considered the same boundary.
 EPSILON = 1e-9
 
@@ -260,6 +262,27 @@ class TextGrid:
                 for p in tier.points:
                     out += [_num(p.time), _str(p.mark)]
         return "\n".join(out) + "\n"
+
+
+def find(tg: TextGrid, pattern: str, regex: bool = False, case_sensitive: bool = False) -> list[tuple[int, int]]:
+    """(tier, item) of every label matching ``pattern``, in time order (then tier order).
+
+    Labels match in their typed form or with Praat backslash codes shown as symbols,
+    so searching "æ" finds "\ae" and vice versa.
+    """
+    flags = 0 if case_sensitive else re.IGNORECASE
+    try:
+        rx = re.compile(pattern if regex else re.escape(pattern), flags)
+    except re.error as e:
+        raise TextGridError(f"Invalid pattern: {e}") from None
+    hits = []
+    for ti, tier in enumerate(tg.tiers):
+        for i, item in enumerate(tier.items):
+            text = tier.get_text(i)
+            if text and (rx.search(text) or rx.search(to_unicode(text))):
+                start = item.xmin if isinstance(tier, IntervalTier) else item.time
+                hits.append((start, ti, i))
+    return [(ti, i) for _, ti, i in sorted(hits)]
 
 
 _TOKEN = re.compile(

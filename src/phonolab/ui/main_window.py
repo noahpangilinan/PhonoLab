@@ -71,6 +71,7 @@ SHORTCUTS = [
             ("Type", "Edit the selected interval's label"),
             ("Alt+Left / Alt+Right", "Previous / next interval"),
             ("Up / Down", "Change tier"),
+            ("Ctrl+F, F3", "Find labels"),
             ("Ctrl+Z / Ctrl+Shift+Z", "Undo / redo"),
         ],
     ),
@@ -219,6 +220,11 @@ class MainWindow(QMainWindow):
         m.addActions([undo, redo])
         m.addSeparator()
         self._action(m, "Select &all", lambda: self.editor.axis.select_all(), "Ctrl+Shift+A", needs=e)
+        self._action(
+            m, "&Find label…", lambda: self.editor.find_bar.open_bar(), QKeySequence.StandardKey.Find, needs=tg
+        )
+        self._action(m, "Find &next", lambda: self.editor.find_bar.step(1), "F3", needs=tg)
+        self._action(m, "Find &previous", lambda: self.editor.find_bar.step(-1), "Shift+F3", needs=tg)
 
         m = mb.addMenu("&View")
         self._action(m, "Zoom &in", lambda: self.editor.axis.zoom(0.5), ["Ctrl+=", "Ctrl++"], needs=e)
@@ -357,6 +363,7 @@ class MainWindow(QMainWindow):
         self._action(m, "Add &interval tier…", lambda: tv().add_tier("interval"), needs=tg)
         self._action(m, "Add &point tier…", lambda: tv().add_tier("point"), needs=tg)
         self._action(m, "&Rename tier…", lambda: tv().rename_tier(), needs=tg)
+        self._action(m, "D&uplicate tier", lambda: tv().duplicate_tier(), needs=tg)
         self._action(m, "Re&move tier…", lambda: tv().remove_tier(), needs=tg)
 
         m = mb.addMenu("&Tools")

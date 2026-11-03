@@ -234,3 +234,25 @@ def test_figure_dialog_renders_and_saves(window, wav, tmp_path):
     assert dialog.render_preview() and not dialog.preview.pixmap().isNull()
     dialog.save(tmp_path / "f.svg")
     assert (tmp_path / "f.svg").read_text(encoding="utf-8").startswith("<?xml")
+
+
+def test_find_bar_steps_through_matches_and_duplicate_tier(window, wav):
+    window.open_sound(str(wav))
+    editor = window.editor
+    tg = TextGrid.for_duration(1.0, ["words"])
+    for t in (0.25, 0.5, 0.75):
+        tg.tiers[0].add_boundary(t)
+    for i, text in enumerate(["cat", "dog", "catalog", ""]):
+        tg.tiers[0].set_text(i, text)
+    editor.doc.set_textgrid(tg)
+    bar = editor.find_bar
+    bar.open_bar()
+    bar.field.setText("cat")
+    assert bar.count.text() == "2 matches"
+    assert bar.step(1) and editor.textgrid_view.selected_item == 0
+    assert bar.step(1) and editor.textgrid_view.selected_item == 2
+    assert bar.step(1) and editor.textgrid_view.selected_item == 0  # wraps around
+    editor.textgrid_view.duplicate_tier(0)
+    assert [t.name for t in editor.doc.textgrid.tiers] == ["words", "words_copy"]
+    editor.doc.undo_stack.undo()
+    assert len(editor.doc.textgrid.tiers) == 1

@@ -29,6 +29,7 @@ from phonolab.core.sound import Sound
 from phonolab.core.textgrid import IntervalTier, TextGridError
 from phonolab.ui.document import Document
 from phonolab.ui.editor.base_pane import LEFT_AXIS_WIDTH, RIGHT_AXIS_WIDTH
+from phonolab.ui.editor.find_bar import FindBar
 from phonolab.ui.editor.manipulation_pane import ManipulationPane
 from phonolab.ui.editor.spectrogram_pane import SpectrogramPane
 from phonolab.ui.editor.textgrid_pane import TextGridView
@@ -165,6 +166,9 @@ class SoundEditor(QWidget):
         self.textgrid_view.item_selected.connect(self._sync_label_edit)
         self.textgrid_view.message.connect(self.message)
         self.textgrid_view.type_text.connect(self._type_into_label)
+        self.find_bar = FindBar(self.textgrid_view)
+        self.find_bar.hide()
+        self.find_bar.closed.connect(lambda: self.textgrid_view.setFocus())
         doc.textgrid_changed.connect(self._on_textgrid_changed)
 
         self.scrollbar = QScrollBar(Qt.Orientation.Horizontal)
@@ -176,6 +180,7 @@ class SoundEditor(QWidget):
         layout.setSpacing(2)
         layout.addWidget(self.overview)
         layout.addWidget(self.splitter, 1)
+        layout.addWidget(self.find_bar)
         layout.addWidget(self.label_row)
         layout.addWidget(self.textgrid_view)
         layout.addWidget(self.scrollbar)

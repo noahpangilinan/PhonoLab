@@ -116,3 +116,16 @@ def test_truncated_file_raises(tmp_path):
     path.write_text('File type = "ooTextFile"\nObject class = "TextGrid"\n0\n1\n<exists>\n3\n')
     with pytest.raises(TextGridError):
         TextGrid.read(path)
+
+
+def test_find_matches_typed_and_ipa_forms(grid):
+    from phonolab.core.textgrid import find
+
+    grid.tiers[0].set_text(0, r"h\ae t")
+    assert find(grid, "æ") == [(0, 0)]  # symbol finds the backslash code
+    assert find(grid, r"\ae") == [(0, 0)]
+    assert find(grid, "h*", regex=False) == [(1, 0)]  # "*" is literal without regex; matches "H*"
+    assert find(grid, "^H", regex=True) == [(0, 0), (1, 0)]  # case-insensitive, time order
+    assert find(grid, "^H", regex=True, case_sensitive=True) == [(1, 0)]
+    with pytest.raises(TextGridError):
+        find(grid, "(", regex=True)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import bisect
+from copy import deepcopy
 
 from PyQt6.QtCore import QPointF, QRectF, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen
@@ -194,6 +195,20 @@ class TextGridView(QWidget):
         name, ok = QInputDialog.getText(self, "Rename tier", "Tier name:", text=old)
         if ok and name.strip() and name != old:
             self._try("Rename tier", lambda g: setattr(g.tiers[index], "name", name.strip()))
+
+    def duplicate_tier(self, index: int | None = None):
+        index = self.selected_tier if index is None else index
+        if not 0 <= index < len(self.tiers):
+            return
+
+        def duplicate(g):
+            copy = deepcopy(g.tiers[index])
+            copy.name = f"{copy.name}_copy"
+            g.tiers.insert(index + 1, copy)
+
+        self._try("Duplicate tier", duplicate)
+        self.selected_tier, self.selected_item = index + 1, None
+        self._on_textgrid_changed()
 
     def remove_tier(self, index: int | None = None):
         index = self.selected_tier if index is None else index
@@ -413,6 +428,7 @@ class TextGridView(QWidget):
             )
             menu.addSeparator()
             menu.addAction("Rename tier…", lambda: self.rename_tier(ti))
+            menu.addAction("Duplicate tier", lambda: self.duplicate_tier(ti))
             menu.addAction("Move tier up", lambda: self.move_tier(ti, -1)).setEnabled(ti > 0)
             menu.addAction("Move tier down", lambda: self.move_tier(ti, 1)).setEnabled(ti < len(self.tiers) - 1)
             menu.addAction("Remove tier…", lambda: self.remove_tier(ti))
