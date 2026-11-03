@@ -80,11 +80,16 @@ Without `make`, use `uv sync` and then `uv run phonolab`.
 ### Standalone app
 
 ```sh
-make package        # builds dist/PhonoLab/ with PyInstaller
+make package        # builds dist/PhonoLab.exe with PyInstaller
 ```
 
-The result is a self-contained folder (about 330 MB) containing `PhonoLab.exe` (or the platform
-equivalent) that runs without Python. Build on the platform you want to ship to.
+The result is a single file, `dist/PhonoLab.exe` (about 105 MB), that runs on any 64-bit Windows machine
+without Python. Copy it anywhere and double-click it. Building on macOS or Linux produces that platform's
+equivalent; PyInstaller can't cross-compile, so build on the platform you want to ship to.
+
+On each launch the exe unpacks itself to a temporary folder, so the window takes a few seconds to appear
+(about 6 s in testing); the folder is removed when PhonoLab closes. Without `make`, run
+`cd packaging && uv run pyinstaller --noconfirm --distpath ../dist --workpath ../build phonolab.spec`.
 
 ### Dependencies
 
@@ -626,7 +631,7 @@ make setup          # install, including dev tools (pytest, pytest-qt, ruff, sci
 make test           # the test suite, with Qt offscreen
 make lint           # ruff check
 make format         # ruff format
-make package        # PyInstaller build in dist/PhonoLab
+make package        # single-file PyInstaller build: dist/PhonoLab.exe
 ```
 
 About the tests:

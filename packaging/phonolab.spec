@@ -1,4 +1,8 @@
-# PyInstaller spec: `make package` builds dist/PhonoLab/ (a folder app; faster start-up than one-file).
+# PyInstaller spec: `make package` builds a single dist/PhonoLab.exe (no Python needed).
+#
+# One-file builds unpack themselves to a temporary folder on each launch, so the first
+# window takes a few seconds longer than running from source. Analysis workers are
+# child processes of the same exe and reuse that unpacked folder.
 from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs
 
 datas = collect_data_files("pyqtgraph") + collect_data_files("matplotlib")
@@ -9,16 +13,19 @@ a = Analysis(
     pathex=["../src"],
     binaries=binaries,
     datas=datas,
-    hiddenimports=["parselmouth", "av", "soundfile", "sounddevice", "scipy.signal"],
-    excludes=["tkinter", "pytest", "IPython"],
+    hiddenimports=["parselmouth", "av", "soundfile", "sounddevice"],
+    # scipy is only used by the tests; the rest are never imported by the app.
+    excludes=["tkinter", "pytest", "IPython", "scipy", "PyInstaller"],
 )
 pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
+    a.binaries,
+    a.datas,
     [],
-    exclude_binaries=True,
     name="PhonoLab",
     console=False,
+    upx=False,
+    runtime_tmpdir=None,
 )
-coll = COLLECT(exe, a.binaries, a.datas, name="PhonoLab")
