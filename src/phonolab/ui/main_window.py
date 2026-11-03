@@ -20,12 +20,14 @@ from PyQt6.QtWidgets import (
 
 from phonolab import __version__
 from phonolab.audio.player import AudioPlayer
+from phonolab.core import sound_ops
 from phonolab.core.registry import ANALYSES
 from phonolab.core.settings import Preferences
 from phonolab.core.sound import SUPPORTED_EXTENSIONS, Sound, SoundLoadError
 from phonolab.core.spectrum import SpectrumSettings
 from phonolab.core.textgrid import TextGrid, TextGridError
 from phonolab.ui.dialogs.new_textgrid import NewTextGridDialog
+from phonolab.ui.dialogs.record_dialog import RecordDialog
 from phonolab.ui.dialogs.settings_dialog import SettingsDialog
 from phonolab.ui.document import Document
 from phonolab.ui.editor.sound_editor import HIDDEN_BY_DEFAULT, LAYERS, SoundEditor
@@ -221,6 +223,43 @@ class MainWindow(QMainWindow):
         self._action(m, "&Play / Stop", lambda: self.editor.toggle_playback(), ["Space", "Tab"], needs=e)
         self._action(m, "&Stop", lambda: self.editor.stop(), "Esc", needs=e)
         self._action(m, "Play &whole sound", lambda: self.editor.play(0, self.editor.doc.sound.duration), needs=e)
+
+        m = mb.addMenu("&Sound")
+        self._action(
+            m,
+            "&Save sound as…",
+            lambda: self.save_sound_as(),
+            "Ctrl+Alt+S",
+            needs=e,
+            tip="Save the whole sound as WAV, FLAC, AIFF, OGG or MP3",
+        )
+        m.addSeparator()
+        self._action(m, "&Record…", self.record, "Ctrl+R")
+        self._action(m, "&New tone or noise…", self.new_sound)
+        m.addSeparator()
+        self._action(m, "E&xtract selection to new tab", self.extract_selection, "Ctrl+E", needs=e)
+        self._action(m, "Convert to &mono", lambda: self._derive(sound_ops.to_mono), needs=e)
+        self._action(m, "Re&sample…", lambda: self._derive(sound_ops.resample, sound_ops.ResampleSettings), needs=e)
+        self._action(
+            m, "Filter (&pass band)…", lambda: self._derive(sound_ops.pass_band, sound_ops.BandSettings), needs=e
+        )
+        self._action(
+            m, "Filter (s&top band)…", lambda: self._derive(sound_ops.stop_band, sound_ops.BandSettings), needs=e
+        )
+        self._action(
+            m, "Pre-&emphasis…", lambda: self._derive(sound_ops.pre_emphasis, sound_ops.PreEmphasisSettings), needs=e
+        )
+        self._action(
+            m, "Scale &peak…", lambda: self._derive(sound_ops.scale_peak, sound_ops.ScalePeakSettings), needs=e
+        )
+        self._action(m, "Re&verse", lambda: self._derive(sound_ops.reverse), needs=e)
+        self._action(
+            m,
+            "&Concatenate open sounds",
+            self.concatenate_sounds,
+            needs=e,
+            tip="Join every open sound, in tab order, into a new sound",
+        )
 
         m = mb.addMenu("&Analysis")
         for name, (cls, _) in ANALYSES.items():
@@ -424,6 +463,82 @@ class MainWindow(QMainWindow):
             editor.doc.title_changed.emit(editor.doc.title)
             editor.textgrid_view.setFocus()
 
+    def open_new_sound(self, sound: Sound):
+        """Open a sound made inside PhonoLab (it has no file until saved)."""
+        self._add_editor(Document(sound))
+
+    def _derive(self, fn, settings_cls=None):
+        """Run a sound operation on the current sound and open the result in a new tab."""
+        editor = self.editor
+        args = ()
+        if settings_cls is not None:
+            key = f"op_{settings_cls.__name__}"
+            dialog = SettingsDialog(self.prefs.analysis_settings(key, settings_cls), self)
+            if not dialog.exec():
+                return
+            settings = dialog.value()
+            self.prefs.set_analysis_settings(key, settings)
+            args = (settings,)
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            result, error = fn(editor.doc.sound, *args), None
+        except Exception as err:  # Praat errors, e.g. a band above the Nyquist frequency
+            result, error = None, err
+        finally:
+            QApplication.restoreOverrideCursor()
+        if error is not None:
+            QMessageBox.warning(self, "Sound operation failed", str(error))
+            return
+        self.open_new_sound(result)
+
+    def extract_selection(self):
+        sel = self.editor.axis.selection
+        if not sel:
+            self.show_message("Select a part of the sound first")
+            return
+        self.open_new_sound(sound_ops.extract(self.editor.doc.sound, *sel))
+
+    def concatenate_sounds(self):
+        try:
+            sound = sound_ops.concatenate([ed.doc.sound for ed in self.editors()])
+        except ValueError as err:
+            QMessageBox.warning(self, "Concatenate", str(err))
+            return
+        self.open_new_sound(sound)
+
+    def new_sound(self):
+        key = "op_ToneSettings"
+        dialog = SettingsDialog(self.prefs.analysis_settings(key, sound_ops.ToneSettings), self)
+        if dialog.exec():
+            self.prefs.set_analysis_settings(key, dialog.value())
+            self.open_new_sound(sound_ops.generate(dialog.value()))
+
+    def record(self):
+        dialog = RecordDialog(self)
+        if dialog.exec() and dialog.sound is not None:
+            self.open_new_sound(dialog.sound)
+
+    def save_sound_as(self, editor: SoundEditor | None = None) -> bool:
+        editor = editor or self.editor
+        doc = editor.doc
+        default = doc.sound.path or Path(self._last_dir()) / f"{doc.sound.name}.wav"
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save sound", str(default),
+            "WAV (*.wav);;FLAC (*.flac);;AIFF (*.aiff);;OGG Vorbis (*.ogg);;MP3 (*.mp3)",
+        )  # fmt: skip
+        if not path:
+            return False
+        try:
+            doc.save_sound(Path(path))
+        except Exception as err:  # libsndfile errors for unsupported format/rate combinations
+            QMessageBox.warning(self, "Could not save sound", str(err))
+            return False
+        self.prefs.add_recent_file(path)
+        self._refresh_recent()
+        self.tabs.setTabToolTip(self.tabs.indexOf(editor), path)
+        self.show_message(f"Saved {Path(path).name}")
+        return True
+
     def _refresh_recent(self):
         self.recent_menu.clear()
         recent = self.prefs.recent_files()
@@ -471,8 +586,16 @@ class MainWindow(QMainWindow):
         return True
 
     def _confirm_discard(self, editor: SoundEditor) -> bool:
-        """Ask to save unsaved annotations. Returns False if the user cancels."""
-        if not editor.doc.is_dirty:
+        """Ask to save an unsaved sound and/or annotations. Returns False if the user cancels."""
+        buttons = QMessageBox.StandardButton
+        if editor.doc.sound_unsaved:
+            answer = QMessageBox.question(
+                self, "Unsaved sound", f"Save the new sound “{editor.doc.sound.name}”?",
+                buttons.Save | buttons.Discard | buttons.Cancel,
+            )  # fmt: skip
+            if answer == buttons.Cancel or (answer == buttons.Save and not self.save_sound_as(editor)):
+                return False
+        if not editor.doc.textgrid_dirty:
             return True
         answer = QMessageBox.question(
             self,

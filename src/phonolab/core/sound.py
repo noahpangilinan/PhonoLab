@@ -57,6 +57,7 @@ class Sound:
     samples: np.ndarray
     sampling_rate: float
     path: Path | None = None
+    title: str | None = None  # name for sounds not (yet) saved to a file
     id: int = field(default_factory=lambda: next(_ids))
 
     def __post_init__(self):
@@ -87,6 +88,8 @@ class Sound:
 
     @property
     def name(self) -> str:
+        if self.title:
+            return self.title
         return self.path.stem if self.path else "untitled"
 
     @property
@@ -126,4 +129,10 @@ class Sound:
         return Sound(self.samples[a:b].copy(), self.sampling_rate)
 
     def save(self, path: str | Path) -> None:
-        sf.write(str(path), self.samples, int(round(self.sampling_rate)))
+        """Write to ``path``; the format (WAV, FLAC, AIFF, OGG, MP3) follows the extension."""
+        sf.write(str(path), np.clip(self.samples, -1.0, 1.0), int(round(self.sampling_rate)))
+
+    def save_as(self, path: str | Path) -> None:
+        """Save and adopt ``path`` as this sound's file (its name follows the file from now on)."""
+        self.save(path)
+        self.path, self.title = Path(path), None

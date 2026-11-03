@@ -30,7 +30,20 @@ class Document(QObject):
 
     @property
     def is_dirty(self) -> bool:
+        return self.textgrid_dirty or self.sound_unsaved
+
+    @property
+    def textgrid_dirty(self) -> bool:
         return self.textgrid is not None and not self.undo_stack.isClean()
+
+    @property
+    def sound_unsaved(self) -> bool:
+        """True for sounds made inside PhonoLab (recorded, generated, filtered…) and not saved yet."""
+        return self.sound.path is None
+
+    def save_sound(self, path: Path) -> None:
+        self.sound.save_as(path)
+        self.title_changed.emit(self.title)
 
     def set_textgrid(self, textgrid: TextGrid | None, path: Path | None = None) -> None:
         self.textgrid = textgrid

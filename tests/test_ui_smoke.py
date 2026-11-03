@@ -150,3 +150,21 @@ def test_spectrum_panel_follows_selection(window, wav):
     assert r is not None and (r.start, r.end) == (0.2, 0.4)
     window.spectrum_panel.log_cpps()
     assert "CPPS" in window.log_panel.text.toPlainText()
+
+
+def test_derived_sound_opens_unsaved_and_saves(window, wav, tmp_path, monkeypatch):
+    from phonolab.core import sound_ops
+
+    window.open_sound(str(wav))
+    window.editor.axis.set_selection(0.1, 0.4)
+    window.extract_selection()
+    assert window.tabs.count() == 2
+    doc = window.editor.doc
+    assert doc.sound_unsaved and doc.title.endswith("*")
+    monkeypatch.setattr(
+        "phonolab.ui.main_window.QFileDialog.getSaveFileName", lambda *a, **k: (str(tmp_path / "part.flac"), "")
+    )
+    assert window.save_sound_as()
+    assert not doc.is_dirty and doc.sound.path == tmp_path / "part.flac"
+    window._derive(sound_ops.reverse)
+    assert window.tabs.count() == 3
