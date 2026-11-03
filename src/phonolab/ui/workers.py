@@ -54,6 +54,11 @@ def _run_analysis(shm_name: str, n_samples: int, sampling_rate: float, name: str
     return fn(sound, *args)
 
 
+def _run_job(shm_name: str, n_samples: int, sampling_rate: float, fn, args: tuple):
+    """Run ``fn(sound, *args)`` (a module-level function) on the shared sound."""
+    return fn(_attach(shm_name, n_samples, sampling_rate), *args)
+
+
 # ---------------------------------------------------------------- GUI process side
 
 _executors: dict[str, ProcessPoolExecutor] = {}
@@ -108,6 +113,8 @@ class AnalysisManager(QObject):
     """
 
     result_ready = pyqtSignal(str)
+    job_done = pyqtSignal(str, object)  # key, result of submit()
+    job_failed = pyqtSignal(str, str)
     busy_changed = pyqtSignal(str, bool)  # name, busy
     error = pyqtSignal(str, str)
 
@@ -122,6 +129,9 @@ class AnalysisManager(QObject):
         self._signals = _Signals()
         self._signals.done.connect(self._on_done)
         self._signals.failed.connect(self._on_failed)
+        self._job_signals = _Signals()
+        self._job_signals.done.connect(self._on_job_done)
+        self._job_signals.failed.connect(self._on_job_failed)
         self._spectrogram_range = (0.0, sound.duration)
         self._shared = SharedSound(sound)
 
@@ -188,6 +198,43 @@ class AnalysisManager(QObject):
                 pass
 
         fut.add_done_callback(finished)
+
+    def submit(self, key: str, fn, *args) -> None:
+        """Run ``fn(sound, *args)`` in the analysis worker; emits job_done/job_failed with ``key``.
+
+        A newer submit with the same key supersedes an older one.
+        """
+        if self._shared.shm is None:
+            return
+        token = self._tokens.get(key, 0) + 1
+        self._tokens[key] = token
+        shared = self._shared
+        fut = _executor("analysis").submit(_run_job, shared.shm.name, shared.n_samples, shared.sampling_rate, fn, args)
+        self.busy_changed.emit(key, True)
+        signals = self._job_signals
+
+        def finished(f: Future):
+            if f.cancelled():
+                return
+            try:
+                if (exc := f.exception()) is not None:
+                    signals.failed.emit(key, token, str(exc))
+                else:
+                    signals.done.emit(key, token, f.result())
+            except RuntimeError:  # the document was closed meanwhile
+                pass
+
+        fut.add_done_callback(finished)
+
+    def _on_job_done(self, key: str, token: int, result):
+        if token == self._tokens.get(key):
+            self.busy_changed.emit(key, False)
+            self.job_done.emit(key, result)
+
+    def _on_job_failed(self, key: str, token: int, message: str):
+        if token == self._tokens.get(key):
+            self.busy_changed.emit(key, False)
+            self.job_failed.emit(key, message)
 
     def compute_now(self, name: str):
         """Compute synchronously in this process (for queries on hidden layers)."""

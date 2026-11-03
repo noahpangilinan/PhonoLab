@@ -11,6 +11,7 @@ from PyQt6.QtGui import QAction, QKeySequence, QUndoGroup
 from PyQt6.QtWidgets import (
     QApplication,
     QFileDialog,
+    QInputDialog,
     QLabel,
     QMainWindow,
     QMessageBox,
@@ -76,6 +77,8 @@ SHORTCUTS = [
             ("F8", "Intensity"),
             ("F2", "Duration"),
             ("F6", "Spectrum"),
+            ("Ctrl+M", "Manipulation"),
+            ("Shift+Space", "Play resynthesis"),
             ("Ctrl+Shift+V", "Voice report"),
         ],
     ),
@@ -266,6 +269,48 @@ class MainWindow(QMainWindow):
             self._action(m, f"{cls.title} settings…", lambda _=False, n=name: self.edit_settings(n), needs=e)
         self._action(m, "Spectrum settings…", self._edit_spectrum_settings)
 
+        m = mb.addMenu("&Manipulation")
+        self._action(
+            m,
+            "&Show manipulation",
+            lambda: self._show_manipulation(),
+            "Ctrl+M",
+            needs=e,
+            tip="Edit the pitch contour and durations, then hear the PSOLA resynthesis",
+        )
+        self._action(m, "&Play resynthesis", lambda: self.editor.play_resynthesis(), "Shift+Space", needs=e)
+        self._action(m, "Open resynthesis in new &tab", lambda: self.editor.open_resynthesis(), needs=e)
+        m.addSeparator()
+        self._action(m, "Add pitch point at &cursor", lambda: self.editor.add_pitch_point_at_cursor(), needs=e)
+        self._action(m, "&Remove pitch points in selection", lambda: self.editor.remove_pitch_points(), needs=e)
+        self._action(m, "Stylize pitch (2 semitones)", lambda: self.editor.stylize_pitch(2.0), needs=e)
+        self._action(m, "Stylize pitch…", self._stylize_pitch, needs=e)
+        self._action(
+            m,
+            "Shift pitch…",
+            self._shift_pitch,
+            needs=e,
+            tip="Raise or lower the selection (or everything) by semitones",
+        )
+        self._action(
+            m,
+            "&Flatten pitch",
+            lambda: self.editor.flatten_pitch(),
+            needs=e,
+            tip="Set the selection (or everything) to its mean pitch",
+        )
+        m.addSeparator()
+        self._action(
+            m,
+            "Set &duration of selection…",
+            self._set_duration,
+            needs=e,
+            tip="Lengthen (>1) or shorten (<1) the selected stretch",
+        )
+        self._action(m, "Re&set manipulation", lambda: self.editor.reset_manipulation(), needs=e)
+        m.addSeparator()
+        self._action(m, "Manipulation settings…", self._edit_manipulation_settings, needs=e)
+
         m = mb.addMenu("&Query")
         self._action(m, "Get &pitch", lambda: self.editor.query_pitch(), "F5", needs=e)
         self._action(m, "Get &formants", lambda: self.editor.query_formants(), "F1", needs=e)
@@ -411,6 +456,7 @@ class MainWindow(QMainWindow):
         editor = SoundEditor(doc, self.prefs, self.player)
         editor.message.connect(self.show_message)
         editor.log.connect(self.log_panel.append)
+        editor.new_sound.connect(self.open_new_sound)
         editor.busy_changed.connect(lambda n, b, ed=editor: self._on_busy(ed, n, b))
         doc.title_changed.connect(lambda _t, ed=editor: self._on_title_changed(ed))
         doc.textgrid_changed.connect(self._update_actions)
@@ -457,10 +503,8 @@ class MainWindow(QMainWindow):
             intervals, points = dialog.tier_names()
             if not intervals and not points:
                 intervals = ["words"]
-            editor.doc.set_textgrid(TextGrid.for_duration(editor.doc.sound.duration, intervals, points))
-            # A new grid is unsaved work: mark it dirty so closing prompts.
-            editor.doc.undo_stack.resetClean()
-            editor.doc.title_changed.emit(editor.doc.title)
+            tg = TextGrid.for_duration(editor.doc.sound.duration, intervals, points)
+            editor.doc.set_textgrid(tg, saved=False)
             editor.textgrid_view.setFocus()
 
     def open_new_sound(self, sound: Sound):
@@ -691,6 +735,33 @@ class MainWindow(QMainWindow):
             settings = dialog.value()
             self.prefs.set_analysis_settings("spectrum", settings)
             self.spectrum_panel.set_settings(settings)
+
+    def _show_manipulation(self):
+        self.set_layer("manipulation", True)
+        self._layer_actions["manipulation"].setChecked(True)
+
+    def _ask_number(self, title: str, label: str, value: float, lo: float, hi: float, decimals: int = 2):
+        number, ok = QInputDialog.getDouble(self, title, label, value, lo, hi, decimals)
+        return number if ok else None
+
+    def _stylize_pitch(self):
+        if (st := self._ask_number("Stylize pitch", "Frequency resolution (semitones):", 2.0, 0.1, 12.0)) is not None:
+            self.editor.stylize_pitch(st)
+
+    def _shift_pitch(self):
+        if (st := self._ask_number("Shift pitch", "Shift by (semitones):", 2.0, -48.0, 48.0)) is not None:
+            self.editor.shift_pitch(st)
+
+    def _set_duration(self):
+        factor = self._ask_number("Set duration", "Relative duration (1 = unchanged):", 1.5, 0.05, 20.0)
+        if factor is not None:
+            self.editor.set_duration_factor(factor)
+
+    def _edit_manipulation_settings(self):
+        dialog = SettingsDialog(self.editor.manipulation_settings, self)
+        if dialog.exec():
+            for ed in self.editors():
+                ed.apply_manipulation_settings(dialog.value())
 
     def _voice_report(self):
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)

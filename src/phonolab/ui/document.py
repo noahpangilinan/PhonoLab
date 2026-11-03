@@ -21,8 +21,11 @@ class Document(QObject):
         self.sound = sound
         self.textgrid: TextGrid | None = None
         self.textgrid_path: Path | None = None
+        self._saved_textgrid: TextGrid | None = None  # as last loaded/saved; None = never saved
+        self.manipulation = None  # ManipulationState once the user opens manipulation
+        # One undo history per document, shared by annotation and pitch/duration edits.
         self.undo_stack = QUndoStack(self)
-        self.undo_stack.cleanChanged.connect(lambda _: self.title_changed.emit(self.title))
+        self.textgrid_changed.connect(lambda: self.title_changed.emit(self.title))
 
     @property
     def title(self) -> str:
@@ -34,7 +37,7 @@ class Document(QObject):
 
     @property
     def textgrid_dirty(self) -> bool:
-        return self.textgrid is not None and not self.undo_stack.isClean()
+        return self.textgrid is not None and self.textgrid != self._saved_textgrid
 
     @property
     def sound_unsaved(self) -> bool:
@@ -45,17 +48,19 @@ class Document(QObject):
         self.sound.save_as(path)
         self.title_changed.emit(self.title)
 
-    def set_textgrid(self, textgrid: TextGrid | None, path: Path | None = None) -> None:
+    def set_textgrid(self, textgrid: TextGrid | None, path: Path | None = None, saved: bool = True) -> None:
+        """Replace the TextGrid. ``saved=False`` marks a new grid as unsaved work."""
         self.textgrid = textgrid
         self.textgrid_path = path
+        self._saved_textgrid = textgrid.copy() if textgrid is not None and saved else None
         self.undo_stack.clear()
         self.textgrid_changed.emit()
-        self.title_changed.emit(self.title)
 
     def save_textgrid(self, path: Path, short: bool = False) -> None:
         self.textgrid.write(path, short=short)
         self.textgrid_path = path
-        self.undo_stack.setClean()
+        self._saved_textgrid = self.textgrid.copy()
+        self.title_changed.emit(self.title)
 
     # ------------------------------------------------------------------ edits
 

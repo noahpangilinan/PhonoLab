@@ -2,6 +2,7 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+import numpy as np  # noqa: E402
 import pytest  # noqa: E402
 from PyQt6.QtCore import QSettings, Qt  # noqa: E402
 from PyQt6.QtWidgets import QMessageBox  # noqa: E402
@@ -168,3 +169,21 @@ def test_derived_sound_opens_unsaved_and_saves(window, wav, tmp_path, monkeypatc
     assert not doc.is_dirty and doc.sound.path == tmp_path / "part.flac"
     window._derive(sound_ops.reverse)
     assert window.tabs.count() == 3
+
+
+def test_manipulation_edit_undo_and_resynthesis(window, qtbot, wav):
+    window.open_sound(str(wav))
+    editor = window.editor
+    window._show_manipulation()
+    qtbot.waitUntil(lambda: editor.doc.manipulation is not None, timeout=15000)
+    state = editor.doc.manipulation
+    original = state.pitch
+    editor.shift_pitch(12)
+    assert np.median(state.pitch.values) == pytest.approx(2 * np.median(original.values))
+    assert not editor.doc.textgrid_dirty  # pitch edits are not annotation edits
+    editor.doc.undo_stack.undo()
+    assert state.pitch == original
+    editor.doc.undo_stack.redo()
+    editor.open_resynthesis()
+    qtbot.waitUntil(lambda: window.tabs.count() == 2, timeout=15000)
+    assert window.editor.doc.sound.name == "vowel_manipulated"

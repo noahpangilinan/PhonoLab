@@ -21,24 +21,30 @@ from PyQt6.QtWidgets import (
 )
 
 from phonolab.audio.player import AudioPlayer
-from phonolab.core import queries, registry, voice
+from phonolab.core import manipulation, queries, registry, voice
+from phonolab.core.manipulation import ManipulationSettings
 from phonolab.core.queries import fmt
 from phonolab.core.settings import Preferences
+from phonolab.core.sound import Sound
 from phonolab.core.textgrid import IntervalTier, TextGridError
 from phonolab.ui.document import Document
 from phonolab.ui.editor.base_pane import LEFT_AXIS_WIDTH, RIGHT_AXIS_WIDTH
+from phonolab.ui.editor.manipulation_pane import ManipulationPane
 from phonolab.ui.editor.spectrogram_pane import SpectrogramPane
 from phonolab.ui.editor.textgrid_pane import TextGridView
 from phonolab.ui.editor.time_axis import TimeAxisController
 from phonolab.ui.editor.waveform_pane import Envelope, WaveformPane
 from phonolab.ui.ipa_palette import IpaPalette
+from phonolab.ui.manipulation import ManipulationState
 from phonolab.ui.theme import COLORS
 from phonolab.ui.workers import AnalysisManager
 
 PLAYHEAD_INTERVAL_MS = 16
-LAYERS = ("waveform", "spectrogram", "pitch", "formants", "intensity", "pulses")
+LAYERS = ("waveform", "spectrogram", "pitch", "formants", "intensity", "pulses", "manipulation")
 # Layers hidden until the user turns them on (like Praat, which hides pulses by default).
-HIDDEN_BY_DEFAULT = {"pulses"}
+HIDDEN_BY_DEFAULT = {"pulses", "manipulation"}
+# Layers whose visibility lives in preferences rather than in the spectrogram pane.
+STANDALONE_LAYERS = ("waveform", "pulses", "manipulation")
 
 
 class _OverviewBox(pg.ViewBox):
@@ -100,6 +106,7 @@ class SoundEditor(QWidget):
     message = pyqtSignal(str)  # transient status-bar text
     log = pyqtSignal(str)  # query results for the Results dock
     busy_changed = pyqtSignal(str, bool)
+    new_sound = pyqtSignal(object)  # a Sound to open in a new tab (e.g. a resynthesis)
 
     def __init__(self, doc: Document, prefs: Preferences, player: AudioPlayer, parent=None):
         super().__init__(parent)
@@ -116,10 +123,19 @@ class SoundEditor(QWidget):
         self.waveform = WaveformPane(self.axis, sound)
         self.manager.result_ready.connect(self._on_result)
         self.spectrogram = SpectrogramPane(self.axis, self.manager)
-        self.panes = [self.waveform, self.spectrogram]
+        self.manipulation_pane = ManipulationPane(self.axis)
+        self.manipulation_pane.message.connect(self.message)
+        self.manipulation_settings = prefs.analysis_settings("manipulation", ManipulationSettings)
+        self.manager.job_done.connect(self._on_job_done)
+        self.manager.job_failed.connect(self._on_job_failed)
+        self._resynthesis = None  # (pitch, duration, samples, sr) of the latest resynthesis
+        self._after_resynthesis = None  # what to do when the pending resynthesis arrives
+        self._resynthesis_tiers = None  # (pitch, duration) submitted for the pending resynthesis
+        self.panes = [self.waveform, self.spectrogram, self.manipulation_pane]
         self.splitter = QSplitter(Qt.Orientation.Vertical)
         self.splitter.addWidget(self.waveform)
         self.splitter.addWidget(self.spectrogram)
+        self.splitter.addWidget(self.manipulation_pane)
         self.splitter.setStretchFactor(0, 1)
         self.splitter.setStretchFactor(1, 2)
         self.splitter.setChildrenCollapsible(False)
@@ -204,6 +220,10 @@ class SoundEditor(QWidget):
         elif name == "pulses":
             self.waveform.set_pulses_visible(visible)
             self.manager.set_enabled("pulses", visible)
+        elif name == "manipulation":
+            self.manipulation_pane.setVisible(visible)
+            if visible:
+                self.ensure_manipulation()
         else:
             self.spectrogram.set_layer_visible(name, visible)
             any_layer = any(self.spectrogram.visible[n] for n in SpectrogramPane.LAYERS)
@@ -214,7 +234,7 @@ class SoundEditor(QWidget):
             self.waveform.set_pulses(self.manager.results["pulses"].times)
 
     def layer_visible(self, name: str) -> bool:
-        if name in ("waveform", "pulses"):
+        if name in STANDALONE_LAYERS:
             return self.prefs.pane_visible(name, name not in HIDDEN_BY_DEFAULT)
         return self.spectrogram.visible[name]
 
@@ -222,6 +242,130 @@ class SoundEditor(QWidget):
         self.prefs.set_analysis_settings(name, settings)
         self.manager.update_settings(name, settings)
         self.spectrogram.apply_settings()
+
+    # ------------------------------------------------------------------ manipulation
+
+    def ensure_manipulation(self) -> bool:
+        """Show the manipulation, starting its pitch analysis if needed. True if it is ready."""
+        if self.doc.manipulation is not None:
+            self.manipulation_pane.set_state(self.doc.manipulation)
+            return True
+        self.manager.submit("manipulation", manipulation.analyse, self.manipulation_settings)
+        return False
+
+    def apply_manipulation_settings(self, settings: ManipulationSettings):
+        """New analysis settings discard the current manipulation (its points came from the old analysis)."""
+        self.prefs.set_analysis_settings("manipulation", settings)
+        self.manipulation_settings = settings
+        self.doc.manipulation = None
+        self._resynthesis = None
+        self.manipulation_pane.set_state(None)
+        self.manipulation_pane.set_status("Analysing pitch for manipulation…")
+        if self.layer_visible("manipulation"):
+            self.ensure_manipulation()
+
+    def _on_job_done(self, key: str, result):
+        if key == "manipulation":
+            self.doc.manipulation = ManipulationState(result, self.manipulation_settings, self.doc.undo_stack, self.doc)
+            self.manipulation_pane.set_state(self.doc.manipulation)
+        elif key == "resynthesis":
+            # Results come back as copies, so cache them under the tier objects we submitted.
+            self._resynthesis = (*self._resynthesis_tiers, *result)
+            action, self._after_resynthesis = self._after_resynthesis, None
+            if action:
+                action()
+
+    def _on_job_failed(self, key: str, message: str):
+        self.message.emit(f"{key.title()} failed: {message}")
+        if key == "manipulation":
+            self.manipulation_pane.set_status(f"Manipulation unavailable: {message}")
+
+    def _with_resynthesis(self, action):
+        """Call ``action(samples, sr)`` with the resynthesis of the current tiers (computing it if stale)."""
+        state = self.doc.manipulation
+        if state is None:
+            self.message.emit("Show the manipulation first (View ▸ Show manipulation)")
+            return
+        cached = self._resynthesis
+        if cached and cached[0] is state.pitch and cached[1] is state.duration:
+            action(cached[2], cached[3])
+            return
+        self._after_resynthesis = lambda: self._with_resynthesis(action)
+        self._resynthesis_tiers = (state.pitch, state.duration)
+        self.manager.submit(
+            "resynthesis", manipulation.resynthesize, self.manipulation_settings, *self._resynthesis_tiers
+        )
+
+    def play_resynthesis(self):
+        if self._playing:
+            self.stop()
+            return
+
+        def play(samples, sr):
+            state = self.doc.manipulation
+            start, end = self.axis.play_range()
+            total = self.doc.sound.duration
+            a, b = (manipulation.map_time(state.duration, t, total) for t in (start, end))
+            # With duration changes the timeline no longer matches the editor, so hide the playhead.
+            self.play(a, b, samples=samples, sampling_rate=sr, follow=len(state.duration) == 0)
+
+        self._with_resynthesis(play)
+
+    def open_resynthesis(self):
+        def open_(samples, sr):
+            self.new_sound.emit(Sound(samples, sr, title=f"{self.doc.sound.name}_manipulated"))
+
+        self._with_resynthesis(open_)
+
+    def _manipulation_range(self) -> tuple[float, float]:
+        return self.axis.selection or (0.0, self.doc.sound.duration)
+
+    def _require_manipulation(self) -> ManipulationState | None:
+        if self.doc.manipulation is None:
+            self.set_layer_visible("manipulation", True)
+            self.message.emit("Analysing pitch for manipulation; try again in a moment")
+            return None
+        return self.doc.manipulation
+
+    def stylize_pitch(self, semitones: float = 2.0):
+        if state := self._require_manipulation():
+            pitch = manipulation.stylize(state.pitch, semitones, self.doc.sound)
+            state.apply(f"Stylize pitch ({semitones:g} st)", pitch=pitch)
+
+    def shift_pitch(self, semitones: float):
+        if state := self._require_manipulation():
+            pitch = manipulation.shift_semitones(state.pitch, semitones, *self._manipulation_range())
+            state.apply(f"Shift pitch {semitones:+g} st", pitch=pitch)
+
+    def flatten_pitch(self):
+        if state := self._require_manipulation():
+            state.apply("Flatten pitch", pitch=manipulation.flatten(state.pitch, *self._manipulation_range()))
+
+    def remove_pitch_points(self):
+        state = self._require_manipulation()
+        if state is None:
+            return
+        if not self.axis.selection:
+            self.message.emit("Select the stretch whose pitch points should be removed")
+            return
+        state.apply("Remove pitch points", pitch=state.pitch.without_range(*self.axis.selection))
+
+    def add_pitch_point_at_cursor(self):
+        if state := self._require_manipulation():
+            t = self.axis.cursor
+            self.manipulation_pane.add_point(t, state.pitch.value_at(t, default=state.settings.floor * 2))
+
+    def set_duration_factor(self, factor: float):
+        if not self.axis.selection:
+            self.message.emit("Select the stretch to lengthen or shorten")
+            return
+        if state := self._require_manipulation():
+            duration = manipulation.set_duration_factor(state.duration, *self.axis.selection, factor)
+            state.apply(f"Duration ×{factor:g}", duration=duration)
+
+    def reset_manipulation(self):
+        if state := self._require_manipulation():
+            state.reset()
 
     # ------------------------------------------------------------------ labels
 
@@ -273,17 +417,21 @@ class SoundEditor(QWidget):
         else:
             self.play(*self.axis.play_range())
 
-    def play(self, start: float, end: float):
+    def play(self, start: float, end: float, samples=None, sampling_rate=None, follow: bool = True):
+        """Play ``[start, end]`` of the sound (or of other ``samples``); ``follow`` moves the playhead."""
         if not self.player.available:
             self.message.emit("No audio output device available")
             return
+        if samples is None:
+            samples, sampling_rate = self.doc.sound.samples, self.doc.sound.sampling_rate
         try:
-            self.player.play(self.doc.sound.samples, self.doc.sound.sampling_rate, start, end)
+            self.player.play(samples, sampling_rate, start, end)
         except Exception as e:  # sounddevice raises PortAudioError for device problems
             self.message.emit(f"Playback failed: {e}")
             return
         self._playing = True
-        self._playhead_timer.start()
+        if follow:
+            self._playhead_timer.start()
 
     def stop(self):
         if self._playing:

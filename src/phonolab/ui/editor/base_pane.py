@@ -69,10 +69,11 @@ class TimePane(pg.PlotWidget):
     """A plot whose x-axis follows the controller and shows cursor, selection and playhead."""
 
     frequency_axis = False  # hover reports y as Hz when True
+    viewbox_class = TimeViewBox
 
     def __init__(self, axis: TimeAxisController, parent=None):
         self.axis = axis
-        super().__init__(parent, viewBox=TimeViewBox(axis))
+        super().__init__(parent, viewBox=self.viewbox_class(axis))
         self.setBackground(COLORS["background"])
         plot = self.getPlotItem()
         plot.hideButtons()

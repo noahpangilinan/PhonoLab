@@ -13,6 +13,7 @@ COLORS = {
     "formant": "#e0261b",
     "intensity": "#d4a017",
     "pulses": "#1f77d4",
+    "manipulation": "#2ca02c",
     "boundary": "#1f3a5f",
     "boundary_hover": "#d62728",
     "tier_selected": (31, 119, 180, 28),
