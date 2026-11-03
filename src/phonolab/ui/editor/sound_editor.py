@@ -8,7 +8,17 @@ from pathlib import Path
 import numpy as np
 import pyqtgraph as pg
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtWidgets import QLineEdit, QScrollBar, QSplitter, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import (
+    QHBoxLayout,
+    QLineEdit,
+    QMenu,
+    QScrollBar,
+    QSplitter,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+    QWidgetAction,
+)
 
 from phonolab.audio.player import AudioPlayer
 from phonolab.core import analysis, queries
@@ -21,6 +31,7 @@ from phonolab.ui.editor.spectrogram_pane import SpectrogramPane
 from phonolab.ui.editor.textgrid_pane import TextGridView
 from phonolab.ui.editor.time_axis import TimeAxisController
 from phonolab.ui.editor.waveform_pane import Envelope, WaveformPane
+from phonolab.ui.ipa_palette import IpaPalette
 from phonolab.ui.theme import COLORS
 from phonolab.ui.workers import AnalysisManager
 
@@ -115,6 +126,22 @@ class SoundEditor(QWidget):
         self.label_edit.setClearButtonEnabled(True)
         self.label_edit.textEdited.connect(self._label_edited)
         self.label_edit.returnPressed.connect(lambda: self.textgrid_view.setFocus())
+        self.label_edit.setToolTip(r"Praat backslash codes such as \ae or \sw are shown as IPA in the tiers")
+        self.ipa_button = QToolButton(text="IPA")
+        self.ipa_button.setToolTip("Insert IPA symbols")
+        self.ipa_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        palette = IpaPalette()
+        palette.symbol_chosen.connect(self._insert_symbol)
+        menu = QMenu(self.ipa_button)
+        palette_action = QWidgetAction(menu)
+        palette_action.setDefaultWidget(palette)
+        menu.addAction(palette_action)
+        self.ipa_button.setMenu(menu)
+        self.label_row = QWidget()
+        row = QHBoxLayout(self.label_row)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.addWidget(self.label_edit, 1)
+        row.addWidget(self.ipa_button)
         self.textgrid_view = TextGridView(self.axis, doc, self._plot_area)
         self.textgrid_view.item_selected.connect(self._sync_label_edit)
         self.textgrid_view.message.connect(self.message)
@@ -130,7 +157,7 @@ class SoundEditor(QWidget):
         layout.setSpacing(2)
         layout.addWidget(self.overview)
         layout.addWidget(self.splitter, 1)
-        layout.addWidget(self.label_edit)
+        layout.addWidget(self.label_row)
         layout.addWidget(self.textgrid_view)
         layout.addWidget(self.scrollbar)
 
@@ -189,7 +216,7 @@ class SoundEditor(QWidget):
     # ------------------------------------------------------------------ labels
 
     def _on_textgrid_changed(self):
-        self.label_edit.setVisible(self.doc.textgrid is not None)
+        self.label_row.setVisible(self.doc.textgrid is not None)
         self._sync_label_edit()
 
     def _sync_label_edit(self):
@@ -197,9 +224,11 @@ class SoundEditor(QWidget):
         tier = view.current_tier()
         if tier is None or view.selected_item is None:
             self.label_edit.setEnabled(False)
+            self.ipa_button.setEnabled(False)
             self.label_edit.clear()
             return
         self.label_edit.setEnabled(True)
+        self.ipa_button.setEnabled(True)
         text = tier.get_text(view.selected_item)
         if text != self.label_edit.text():
             self.label_edit.setText(text)
@@ -212,6 +241,10 @@ class SoundEditor(QWidget):
             self.doc.set_label(view.selected_tier, view.selected_item, text)
         except TextGridError as e:
             self.message.emit(str(e))
+
+    def _insert_symbol(self, symbol: str):
+        if self.textgrid_view.selected_item is not None:
+            self._type_into_label(symbol)
 
     def _type_into_label(self, text: str):
         self.label_edit.setFocus()

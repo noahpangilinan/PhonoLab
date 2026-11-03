@@ -116,3 +116,13 @@ def test_export_tables(window, qtbot, wav, tmp_path):
     from phonolab.core.sound import Sound
 
     assert Sound.from_file(tmp_path / "part.wav").duration == pytest.approx(0.2, abs=1e-3)
+
+
+def test_ipa_palette_inserts_into_label(window, wav):
+    window.open_sound(str(wav))
+    editor = window.editor
+    doc = editor.doc
+    doc.set_textgrid(TextGrid.for_duration(doc.sound.duration, ["phones"]))
+    editor.textgrid_view.select(0, 0)
+    editor._insert_symbol("ə")
+    assert doc.textgrid.tiers[0].intervals[0].text == "ə"

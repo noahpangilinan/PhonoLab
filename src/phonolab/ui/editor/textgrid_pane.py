@@ -8,6 +8,7 @@ from PyQt6.QtCore import QPointF, QRectF, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen
 from PyQt6.QtWidgets import QInputDialog, QMenu, QMessageBox, QSizePolicy, QWidget
 
+from phonolab.core.ipa import to_unicode
 from phonolab.core.textgrid import IntervalTier, PointTier, TextGridError
 from phonolab.ui.document import Document
 from phonolab.ui.editor.time_axis import TimeAxisController
@@ -285,7 +286,7 @@ class TextGridView(QWidget):
                 p.fillRect(QRectF(x0, top, x1 - x0, TIER_HEIGHT), QColor(*COLORS["interval_selected"]))
             if iv.text and x1 - x0 > 6:
                 p.setPen(QColor(COLORS["foreground"]))
-                text = fm.elidedText(iv.text, Qt.TextElideMode.ElideRight, int(x1 - x0 - 4))
+                text = fm.elidedText(to_unicode(iv.text), Qt.TextElideMode.ElideRight, int(x1 - x0 - 4))
                 p.drawText(QRectF(x0, top, x1 - x0, TIER_HEIGHT), Qt.AlignmentFlag.AlignCenter, text)
             if i > 0:
                 hot = self._hover == (ti, i) or (self._drag and self._drag[:2] == (ti, i))
@@ -308,7 +309,7 @@ class TextGridView(QWidget):
             p.drawLine(QPointF(x, top + TIER_HEIGHT * 0.7), QPointF(x, top + TIER_HEIGHT))
             if pt.mark:
                 p.setPen(QColor(COLORS["foreground"]))
-                p.drawText(QRectF(x - 60, mid - 10, 120, 20), Qt.AlignmentFlag.AlignCenter, pt.mark)
+                p.drawText(QRectF(x - 60, mid - 10, 120, 20), Qt.AlignmentFlag.AlignCenter, to_unicode(pt.mark))
 
     # ------------------------------------------------------------------ mouse
 
