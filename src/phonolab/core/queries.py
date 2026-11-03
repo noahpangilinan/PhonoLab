@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 
-from phonolab.core.analysis import FormantResult, IntensityResult, PitchResult
+from phonolab.core.analysis import FormantResult, FormantSettings, IntensityResult, PitchResult
+from phonolab.core.sound import Sound
 
 
 def value_at(times: np.ndarray, values: np.ndarray, t: float) -> float:
@@ -32,19 +33,27 @@ class RangeStats:
     maximum: float
     stdev: float
     n_frames: int
+    median: float = float("nan")
+    time_of_minimum: float = float("nan")
+    time_of_maximum: float = float("nan")
 
     @classmethod
-    def of(cls, values: np.ndarray) -> RangeStats:
-        v = values[~np.isnan(values)]
+    def of(cls, values: np.ndarray, times: np.ndarray | None = None) -> RangeStats:
+        defined = ~np.isnan(values)
+        v = values[defined]
         if len(v) == 0:
             nan = float("nan")
             return cls(nan, nan, nan, nan, 0)
+        t = times[defined] if times is not None else None
         return cls(
             float(v.mean()),
             float(v.min()),
             float(v.max()),
             float(v.std(ddof=1)) if len(v) > 1 else 0.0,
             len(v),
+            float(np.median(v)),
+            float(t[np.argmin(v)]) if t is not None else float("nan"),
+            float(t[np.argmax(v)]) if t is not None else float("nan"),
         )
 
 
@@ -58,7 +67,21 @@ def pitch_at(p: PitchResult, t: float) -> float:
 
 
 def pitch_stats(p: PitchResult, start: float, end: float) -> RangeStats:
-    return RangeStats.of(p.frequencies[_in_range(p.times, start, end)])
+    mask = _in_range(p.times, start, end)
+    return RangeStats.of(p.frequencies[mask], p.times[mask])
+
+
+def pitch_mean_abs_slope(p: PitchResult, start: float, end: float) -> float:
+    """Mean absolute F0 slope (Hz/s) over consecutive voiced frames, like Praat's "Get mean absolute slope"."""
+    mask = _in_range(p.times, start, end)
+    t, f = p.times[mask], p.frequencies[mask]
+    slopes = np.abs(np.diff(f)) / np.diff(t)
+    slopes = slopes[~np.isnan(slopes)]
+    return float(slopes.mean()) if len(slopes) else float("nan")
+
+
+def semitones(hz: float, reference: float = 100.0) -> float:
+    return float(12 * np.log2(hz / reference)) if hz and not np.isnan(hz) else float("nan")
 
 
 def formants_at(f: FormantResult, t: float) -> list[float]:
@@ -67,7 +90,20 @@ def formants_at(f: FormantResult, t: float) -> list[float]:
 
 def formant_stats(f: FormantResult, start: float, end: float) -> list[RangeStats]:
     mask = _in_range(f.times, start, end)
-    return [RangeStats.of(row[mask]) for row in f.frequencies]
+    return [RangeStats.of(row[mask], f.times[mask]) for row in f.frequencies]
+
+
+def formant_bandwidths_at(sound: Sound, s: FormantSettings, t: float) -> list[float]:
+    """Formant bandwidths at ``t``, from a short Burg analysis around it (not kept in bulk results)."""
+    margin = 2 * s.window_length
+    part = sound.praat.extract_part(
+        from_time=max(0.0, t - margin), to_time=min(sound.duration, t + margin), preserve_times=True
+    )
+    formant = part.to_formant_burg(
+        max_number_of_formants=s.n_formants, maximum_formant=s.max_formant,
+        window_length=s.window_length, pre_emphasis_from=s.pre_emphasis_from,
+    )  # fmt: skip
+    return [formant.get_bandwidth_at_time(i + 1, t) for i in range(int(np.ceil(s.n_formants)))]
 
 
 def intensity_at(i: IntensityResult, t: float) -> float:
@@ -76,11 +112,12 @@ def intensity_at(i: IntensityResult, t: float) -> float:
 
 def intensity_stats(i: IntensityResult, start: float, end: float) -> RangeStats:
     """Mean intensity is energy-averaged, as Praat's "Get mean (energy)" does."""
-    v = i.db[_in_range(i.times, start, end)]
-    stats = RangeStats.of(v)
+    mask = _in_range(i.times, start, end)
+    v = i.db[mask]
+    stats = RangeStats.of(v, i.times[mask])
     if stats.n_frames:
         energy_mean = 10 * np.log10(np.mean(10 ** (v[~np.isnan(v)] / 10)))
-        stats = RangeStats(float(energy_mean), stats.minimum, stats.maximum, stats.stdev, stats.n_frames)
+        stats = replace(stats, mean=float(energy_mean))
     return stats
 
 

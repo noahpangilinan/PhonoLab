@@ -87,3 +87,26 @@ def test_settings_roundtrip_through_dict():
     assert analysis.settings_from_dict(PitchSettings, bad) == PitchSettings()
     bad_map = {"colormap": "bogus"}
     assert analysis.settings_from_dict(SpectrogramSettings, bad_map) == SpectrogramSettings()
+
+
+def test_range_stats_report_extremes_and_times():
+    times = np.array([0.0, 0.1, 0.2, 0.3])
+    values = np.array([100.0, np.nan, 300.0, 200.0])
+    st = queries.RangeStats.of(values, times)
+    assert (st.minimum, st.time_of_minimum) == (100.0, 0.0)
+    assert (st.maximum, st.time_of_maximum) == (300.0, 0.2)
+    assert st.median == 200.0 and st.n_frames == 3
+
+
+def test_pitch_slope_and_semitones():
+    times = np.array([0.0, 0.01, 0.02, 0.03])
+    p = analysis.PitchResult(times, np.array([100.0, 101.0, np.nan, 103.0]), np.ones(4))
+    assert queries.pitch_mean_abs_slope(p, 0, 1) == pytest.approx(100.0)  # only the voiced pair counts
+    assert queries.semitones(200.0) == pytest.approx(12.0)
+    assert np.isnan(queries.semitones(float("nan")))
+
+
+def test_formant_bandwidths_at_cursor():
+    snd = make_vowel(formants=(700, 1220, 2600), duration=0.6)
+    bws = queries.formant_bandwidths_at(snd, FormantSettings(), 0.3)
+    assert len(bws) == 5 and 0 < bws[0] < 400

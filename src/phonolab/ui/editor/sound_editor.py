@@ -325,12 +325,18 @@ class SoundEditor(QWidget):
         p = self.result("pitch")
         if self.axis.selection:
             st = queries.pitch_stats(p, *self.axis.selection)
+            slope = queries.pitch_mean_abs_slope(p, *self.axis.selection)
+            mean_st = fmt(queries.semitones(st.mean), "st re 100 Hz")
             self.log.emit(
-                f"Pitch {self._where()}: mean {fmt(st.mean, 'Hz')}, min {fmt(st.minimum, 'Hz')}, "
-                f"max {fmt(st.maximum, 'Hz')}, sd {fmt(st.stdev, 'Hz')} ({st.n_frames} voiced frames)"
+                f"Pitch {self._where()}: mean {fmt(st.mean, 'Hz')} ({mean_st}), "
+                f"median {fmt(st.median, 'Hz')}, sd {fmt(st.stdev, 'Hz')}, "
+                f"min {fmt(st.minimum, 'Hz')} at {fmt(st.time_of_minimum, 's', 4)}, "
+                f"max {fmt(st.maximum, 'Hz')} at {fmt(st.time_of_maximum, 's', 4)}, "
+                f"mean |slope| {fmt(slope, 'Hz/s', 1)} ({st.n_frames} voiced frames)"
             )
         else:
-            self.log.emit(f"Pitch at {self._where()}: {fmt(queries.pitch_at(p, self.axis.cursor), 'Hz')}")
+            f0 = queries.pitch_at(p, self.axis.cursor)
+            self.log.emit(f"Pitch at {self._where()}: {fmt(f0, 'Hz')} ({fmt(queries.semitones(f0), 'st re 100 Hz')})")
 
     def query_formants(self):
         f = self.result("formants")
@@ -340,7 +346,14 @@ class SoundEditor(QWidget):
             self.log.emit(f"Mean formants {self._where()}: " + ", ".join(parts))
         else:
             values = queries.formants_at(f, self.axis.cursor)
-            parts = [f"F{i + 1} {fmt(v, 'Hz', 0)}" for i, v in enumerate(values[:4])]
+            try:
+                bws = queries.formant_bandwidths_at(self.doc.sound, self.manager.settings["formants"], self.axis.cursor)
+            except Exception:  # cursor too close to the edges for a Burg window
+                bws = [float("nan")] * len(values)
+            parts = [
+                f"F{i + 1} {fmt(v, 'Hz', 0)} (B{i + 1} {fmt(b, 'Hz', 0)})"
+                for i, (v, b) in enumerate(zip(values[:4], bws, strict=False))
+            ]
             self.log.emit(f"Formants at {self._where()}: " + ", ".join(parts))
 
     def query_intensity(self):
