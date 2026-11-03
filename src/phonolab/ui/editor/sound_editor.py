@@ -1,0 +1,594 @@
+"""The Sound + TextGrid editor shown in each document tab."""
+
+from __future__ import annotations
+
+import csv
+from pathlib import Path
+
+import numpy as np
+import pyqtgraph as pg
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtWidgets import (
+    QHBoxLayout,
+    QLineEdit,
+    QMenu,
+    QScrollBar,
+    QSplitter,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+    QWidgetAction,
+)
+
+from phonolab.audio.player import AudioPlayer
+from phonolab.core import manipulation, queries, registry, voice
+from phonolab.core.manipulation import ManipulationSettings
+from phonolab.core.queries import fmt
+from phonolab.core.settings import Preferences
+from phonolab.core.sound import Sound
+from phonolab.core.textgrid import IntervalTier, TextGridError
+from phonolab.ui.document import Document
+from phonolab.ui.editor.base_pane import LEFT_AXIS_WIDTH, RIGHT_AXIS_WIDTH
+from phonolab.ui.editor.find_bar import FindBar
+from phonolab.ui.editor.manipulation_pane import ManipulationPane
+from phonolab.ui.editor.spectrogram_pane import SpectrogramPane
+from phonolab.ui.editor.textgrid_pane import TextGridView
+from phonolab.ui.editor.time_axis import TimeAxisController
+from phonolab.ui.editor.waveform_pane import Envelope, WaveformPane
+from phonolab.ui.ipa_palette import IpaPalette
+from phonolab.ui.manipulation import ManipulationState
+from phonolab.ui.theme import COLORS
+from phonolab.ui.workers import AnalysisManager
+
+PLAYHEAD_INTERVAL_MS = 16
+LAYERS = ("waveform", "spectrogram", "pitch", "formants", "intensity", "pulses", "manipulation")
+# Layers hidden until the user turns them on (like Praat, which hides pulses by default).
+HIDDEN_BY_DEFAULT = {"pulses", "manipulation"}
+# Layers whose visibility lives in preferences rather than in the spectrogram pane.
+STANDALONE_LAYERS = ("waveform", "pulses", "manipulation")
+
+
+class _OverviewBox(pg.ViewBox):
+    def __init__(self, axis: TimeAxisController):
+        super().__init__(enableMenu=False)
+        self.axis = axis
+        self.setMouseEnabled(x=False, y=False)
+
+    def _center_on(self, ev):
+        t = self.mapSceneToView(ev.scenePos()).x()
+        v0, v1 = self.axis.view
+        self.axis.set_view(t - (v1 - v0) / 2, t + (v1 - v0) / 2)
+
+    def mouseClickEvent(self, ev):  # noqa: N802
+        if ev.button() == Qt.MouseButton.LeftButton:
+            ev.accept()
+            self._center_on(ev)
+
+    def mouseDragEvent(self, ev, axis=None):  # noqa: N802
+        if ev.button() == Qt.MouseButton.LeftButton:
+            ev.accept()
+            self._center_on(ev)
+
+    def wheelEvent(self, ev, axis=None):  # noqa: N802
+        ev.accept()
+
+
+class OverviewStrip(pg.PlotWidget):
+    """Whole-file waveform with a box marking the visible window; click or drag to navigate."""
+
+    def __init__(self, axis: TimeAxisController, sound, parent=None):
+        super().__init__(parent, viewBox=_OverviewBox(axis))
+        self.axis = axis
+        self.setFixedHeight(46)
+        plot = self.getPlotItem()
+        plot.hideButtons()
+        plot.setMenuEnabled(False)
+        for side in ("left", "right"):
+            plot.showAxis(side)
+            plot.getAxis(side).setStyle(showValues=False)
+        plot.getAxis("left").setWidth(LEFT_AXIS_WIDTH)
+        plot.getAxis("right").setWidth(RIGHT_AXIS_WIDTH)
+        plot.getAxis("bottom").setStyle(showValues=False)
+        plot.getAxis("bottom").setHeight(2)
+        mono = sound.mono
+        x, y = Envelope(mono, sound.sampling_rate).render(0, sound.duration, 1500)
+        plot.plot(x, y, pen=pg.mkPen(COLORS["muted"]))
+        peak = float(np.max(np.abs(mono))) or 1.0
+        plot.getViewBox().setRange(xRange=(0, sound.duration), yRange=(-peak, peak), padding=0)
+        self.window_box = pg.LinearRegionItem(
+            movable=False, brush=pg.mkBrush(31, 119, 180, 50), pen=pg.mkPen(COLORS["playhead"])
+        )
+        self.addItem(self.window_box)
+        axis.view_changed.connect(lambda a, b: self.window_box.setRegion((a, b)))
+        self.window_box.setRegion(axis.view)
+
+
+class SoundEditor(QWidget):
+    message = pyqtSignal(str)  # transient status-bar text
+    log = pyqtSignal(str)  # query results for the Results dock
+    busy_changed = pyqtSignal(str, bool)
+    new_sound = pyqtSignal(object)  # a Sound to open in a new tab (e.g. a resynthesis)
+
+    def __init__(self, doc: Document, prefs: Preferences, player: AudioPlayer, parent=None):
+        super().__init__(parent)
+        self.doc = doc
+        self.prefs = prefs
+        self.player = player
+        sound = doc.sound
+        self.axis = TimeAxisController(sound.duration, self)
+        self.manager = AnalysisManager(sound, {name: prefs.analysis_settings(name) for name in registry.ANALYSES}, self)
+        self.manager.busy_changed.connect(self.busy_changed)
+        self.manager.error.connect(lambda name, msg: self.message.emit(f"{name.title()} failed: {msg}"))
+
+        self.overview = OverviewStrip(self.axis, sound)
+        self.waveform = WaveformPane(self.axis, sound)
+        self.manager.result_ready.connect(self._on_result)
+        self.spectrogram = SpectrogramPane(self.axis, self.manager)
+        self.manipulation_pane = ManipulationPane(self.axis)
+        self.manipulation_pane.message.connect(self.message)
+        self.manipulation_settings = prefs.analysis_settings("manipulation", ManipulationSettings)
+        self.manager.job_done.connect(self._on_job_done)
+        self.manager.job_failed.connect(self._on_job_failed)
+        self._resynthesis = None  # (pitch, duration, samples, sr) of the latest resynthesis
+        self._after_resynthesis = None  # what to do when the pending resynthesis arrives
+        self._resynthesis_tiers = None  # (pitch, duration) submitted for the pending resynthesis
+        self.panes = [self.waveform, self.spectrogram, self.manipulation_pane]
+        self.splitter = QSplitter(Qt.Orientation.Vertical)
+        self.splitter.addWidget(self.waveform)
+        self.splitter.addWidget(self.spectrogram)
+        self.splitter.addWidget(self.manipulation_pane)
+        self.splitter.setStretchFactor(0, 1)
+        self.splitter.setStretchFactor(1, 2)
+        self.splitter.setChildrenCollapsible(False)
+
+        self.label_edit = QLineEdit()
+        self.label_edit.setPlaceholderText("Select an interval or point to type its label")
+        self.label_edit.setClearButtonEnabled(True)
+        self.label_edit.textEdited.connect(self._label_edited)
+        self.label_edit.returnPressed.connect(lambda: self.textgrid_view.setFocus())
+        self.label_edit.setToolTip(r"Praat backslash codes such as \ae or \sw are shown as IPA in the tiers")
+        self.ipa_button = QToolButton(text="IPA")
+        self.ipa_button.setToolTip("Insert IPA symbols")
+        self.ipa_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        palette = IpaPalette()
+        palette.symbol_chosen.connect(self._insert_symbol)
+        menu = QMenu(self.ipa_button)
+        palette_action = QWidgetAction(menu)
+        palette_action.setDefaultWidget(palette)
+        menu.addAction(palette_action)
+        self.ipa_button.setMenu(menu)
+        self.label_row = QWidget()
+        row = QHBoxLayout(self.label_row)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.addWidget(self.label_edit, 1)
+        row.addWidget(self.ipa_button)
+        self.textgrid_view = TextGridView(self.axis, doc, self._plot_area)
+        self.textgrid_view.item_selected.connect(self._sync_label_edit)
+        self.textgrid_view.message.connect(self.message)
+        self.textgrid_view.type_text.connect(self._type_into_label)
+        self.find_bar = FindBar(self.textgrid_view)
+        self.find_bar.hide()
+        self.find_bar.closed.connect(lambda: self.textgrid_view.setFocus())
+        doc.textgrid_changed.connect(self._on_textgrid_changed)
+
+        self.scrollbar = QScrollBar(Qt.Orientation.Horizontal)
+        self.scrollbar.valueChanged.connect(self._scrolled)
+        self.axis.view_changed.connect(self._sync_scrollbar)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(2)
+        layout.addWidget(self.overview)
+        layout.addWidget(self.splitter, 1)
+        layout.addWidget(self.find_bar)
+        layout.addWidget(self.label_row)
+        layout.addWidget(self.textgrid_view)
+        layout.addWidget(self.scrollbar)
+
+        self._playhead_timer = QTimer(self, interval=PLAYHEAD_INTERVAL_MS)
+        self._playhead_timer.timeout.connect(self._update_playhead)
+        self.player.finished.connect(self._on_playback_finished)
+        self._playing = False
+
+        for name in LAYERS:
+            self.set_layer_visible(name, prefs.pane_visible(name, name not in HIDDEN_BY_DEFAULT))
+        self._on_textgrid_changed()
+        self._sync_scrollbar(*self.axis.view)
+
+    # ------------------------------------------------------------------ layout helpers
+
+    def _plot_area(self) -> tuple[float, float]:
+        pane = next((p for p in self.panes if p.isVisible()), self.waveform)
+        left, right = pane.plot_area_x()
+        if right <= left:  # not laid out yet
+            return LEFT_AXIS_WIDTH, self.width() - RIGHT_AXIS_WIDTH
+        offset = pane.mapTo(self, pane.rect().topLeft()).x()
+        return left + offset, right + offset
+
+    def _sync_scrollbar(self, start: float, end: float):
+        width_ms = int((end - start) * 1000)
+        self.scrollbar.blockSignals(True)
+        self.scrollbar.setRange(0, max(0, int(self.axis.duration * 1000) - width_ms))
+        self.scrollbar.setPageStep(max(width_ms, 1))
+        self.scrollbar.setSingleStep(max(width_ms // 10, 1))
+        self.scrollbar.setValue(int(start * 1000))
+        self.scrollbar.blockSignals(False)
+
+    def _scrolled(self, value: int):
+        v0, v1 = self.axis.view
+        self.axis.set_view(value / 1000, value / 1000 + (v1 - v0))
+
+    def set_layer_visible(self, name: str, visible: bool):
+        self.prefs.set_pane_visible(name, visible)
+        if name == "waveform":
+            self.waveform.setVisible(visible)
+        elif name == "pulses":
+            self.waveform.set_pulses_visible(visible)
+            self.manager.set_enabled("pulses", visible)
+        elif name == "manipulation":
+            self.manipulation_pane.setVisible(visible)
+            if visible:
+                self.ensure_manipulation()
+        else:
+            self.spectrogram.set_layer_visible(name, visible)
+            any_layer = any(self.spectrogram.visible[n] for n in SpectrogramPane.LAYERS)
+            self.spectrogram.setVisible(any_layer)
+
+    def _on_result(self, name: str):
+        if name == "pulses":
+            self.waveform.set_pulses(self.manager.results["pulses"].times)
+
+    def layer_visible(self, name: str) -> bool:
+        if name in STANDALONE_LAYERS:
+            return self.prefs.pane_visible(name, name not in HIDDEN_BY_DEFAULT)
+        return self.spectrogram.visible[name]
+
+    def apply_settings(self, name: str, settings):
+        self.prefs.set_analysis_settings(name, settings)
+        self.manager.update_settings(name, settings)
+        self.spectrogram.apply_settings()
+
+    # ------------------------------------------------------------------ manipulation
+
+    def ensure_manipulation(self) -> bool:
+        """Show the manipulation, starting its pitch analysis if needed. True if it is ready."""
+        if self.doc.manipulation is not None:
+            self.manipulation_pane.set_state(self.doc.manipulation)
+            return True
+        self.manager.submit("manipulation", manipulation.analyse, self.manipulation_settings)
+        return False
+
+    def apply_manipulation_settings(self, settings: ManipulationSettings):
+        """New analysis settings discard the current manipulation (its points came from the old analysis)."""
+        self.prefs.set_analysis_settings("manipulation", settings)
+        self.manipulation_settings = settings
+        self.doc.manipulation = None
+        self._resynthesis = None
+        self.manipulation_pane.set_state(None)
+        self.manipulation_pane.set_status("Analysing pitch for manipulation…")
+        if self.layer_visible("manipulation"):
+            self.ensure_manipulation()
+
+    def _on_job_done(self, key: str, result):
+        if key == "manipulation":
+            self.doc.manipulation = ManipulationState(result, self.manipulation_settings, self.doc.undo_stack, self.doc)
+            self.manipulation_pane.set_state(self.doc.manipulation)
+        elif key == "resynthesis":
+            # Results come back as copies, so cache them under the tier objects we submitted.
+            self._resynthesis = (*self._resynthesis_tiers, *result)
+            action, self._after_resynthesis = self._after_resynthesis, None
+            if action:
+                action()
+
+    def _on_job_failed(self, key: str, message: str):
+        self.message.emit(f"{key.title()} failed: {message}")
+        if key == "manipulation":
+            self.manipulation_pane.set_status(f"Manipulation unavailable: {message}")
+
+    def _with_resynthesis(self, action):
+        """Call ``action(samples, sr)`` with the resynthesis of the current tiers (computing it if stale)."""
+        state = self.doc.manipulation
+        if state is None:
+            self.message.emit("Show the manipulation first (View ▸ Show manipulation)")
+            return
+        cached = self._resynthesis
+        if cached and cached[0] is state.pitch and cached[1] is state.duration:
+            action(cached[2], cached[3])
+            return
+        self._after_resynthesis = lambda: self._with_resynthesis(action)
+        self._resynthesis_tiers = (state.pitch, state.duration)
+        self.manager.submit(
+            "resynthesis", manipulation.resynthesize, self.manipulation_settings, *self._resynthesis_tiers
+        )
+
+    def play_resynthesis(self):
+        if self._playing:
+            self.stop()
+            return
+
+        def play(samples, sr):
+            state = self.doc.manipulation
+            start, end = self.axis.play_range()
+            total = self.doc.sound.duration
+            a, b = (manipulation.map_time(state.duration, t, total) for t in (start, end))
+            # With duration changes the timeline no longer matches the editor, so hide the playhead.
+            self.play(a, b, samples=samples, sampling_rate=sr, follow=len(state.duration) == 0)
+
+        self._with_resynthesis(play)
+
+    def open_resynthesis(self):
+        def open_(samples, sr):
+            self.new_sound.emit(Sound(samples, sr, title=f"{self.doc.sound.name}_manipulated"))
+
+        self._with_resynthesis(open_)
+
+    def _manipulation_range(self) -> tuple[float, float]:
+        return self.axis.selection or (0.0, self.doc.sound.duration)
+
+    def _require_manipulation(self) -> ManipulationState | None:
+        if self.doc.manipulation is None:
+            self.set_layer_visible("manipulation", True)
+            self.message.emit("Analysing pitch for manipulation; try again in a moment")
+            return None
+        return self.doc.manipulation
+
+    def stylize_pitch(self, semitones: float = 2.0):
+        if state := self._require_manipulation():
+            pitch = manipulation.stylize(state.pitch, semitones, self.doc.sound)
+            state.apply(f"Stylize pitch ({semitones:g} st)", pitch=pitch)
+
+    def shift_pitch(self, semitones: float):
+        if state := self._require_manipulation():
+            pitch = manipulation.shift_semitones(state.pitch, semitones, *self._manipulation_range())
+            state.apply(f"Shift pitch {semitones:+g} st", pitch=pitch)
+
+    def flatten_pitch(self):
+        if state := self._require_manipulation():
+            state.apply("Flatten pitch", pitch=manipulation.flatten(state.pitch, *self._manipulation_range()))
+
+    def remove_pitch_points(self):
+        state = self._require_manipulation()
+        if state is None:
+            return
+        if not self.axis.selection:
+            self.message.emit("Select the stretch whose pitch points should be removed")
+            return
+        state.apply("Remove pitch points", pitch=state.pitch.without_range(*self.axis.selection))
+
+    def add_pitch_point_at_cursor(self):
+        if state := self._require_manipulation():
+            t = self.axis.cursor
+            self.manipulation_pane.add_point(t, state.pitch.value_at(t, default=state.settings.floor * 2))
+
+    def set_duration_factor(self, factor: float):
+        if not self.axis.selection:
+            self.message.emit("Select the stretch to lengthen or shorten")
+            return
+        if state := self._require_manipulation():
+            duration = manipulation.set_duration_factor(state.duration, *self.axis.selection, factor)
+            state.apply(f"Duration ×{factor:g}", duration=duration)
+
+    def reset_manipulation(self):
+        if state := self._require_manipulation():
+            state.reset()
+
+    # ------------------------------------------------------------------ labels
+
+    def _on_textgrid_changed(self):
+        self.label_row.setVisible(self.doc.textgrid is not None)
+        self._sync_label_edit()
+
+    def _sync_label_edit(self):
+        view = self.textgrid_view
+        tier = view.current_tier()
+        if tier is None or view.selected_item is None:
+            self.label_edit.setEnabled(False)
+            self.ipa_button.setEnabled(False)
+            self.label_edit.clear()
+            return
+        self.label_edit.setEnabled(True)
+        self.ipa_button.setEnabled(True)
+        text = tier.get_text(view.selected_item)
+        if text != self.label_edit.text():
+            self.label_edit.setText(text)
+
+    def _label_edited(self, text: str):
+        view = self.textgrid_view
+        if view.selected_item is None:
+            return
+        try:
+            self.doc.set_label(view.selected_tier, view.selected_item, text)
+        except TextGridError as e:
+            self.message.emit(str(e))
+
+    def _insert_symbol(self, symbol: str):
+        if self.textgrid_view.selected_item is not None:
+            self._type_into_label(symbol)
+
+    def _type_into_label(self, text: str):
+        self.label_edit.setFocus()
+        self.label_edit.insert(text)
+        self._label_edited(self.label_edit.text())
+
+    # ------------------------------------------------------------------ playback
+
+    @property
+    def is_playing(self) -> bool:
+        return self._playing
+
+    def toggle_playback(self):
+        if self._playing:
+            self.stop()
+        else:
+            self.play(*self.axis.play_range())
+
+    def play(self, start: float, end: float, samples=None, sampling_rate=None, follow: bool = True):
+        """Play ``[start, end]`` of the sound (or of other ``samples``); ``follow`` moves the playhead."""
+        if not self.player.available:
+            self.message.emit("No audio output device available")
+            return
+        if samples is None:
+            samples, sampling_rate = self.doc.sound.samples, self.doc.sound.sampling_rate
+        try:
+            self.player.play(samples, sampling_rate, start, end)
+        except Exception as e:  # sounddevice raises PortAudioError for device problems
+            self.message.emit(f"Playback failed: {e}")
+            return
+        self._playing = True
+        if follow:
+            self._playhead_timer.start()
+
+    def stop(self):
+        if self._playing:
+            self.player.stop()
+
+    def _on_playback_finished(self):
+        if not self._playing:
+            return
+        self._playing = False
+        self._playhead_timer.stop()
+        self._show_playhead(None)
+
+    def _update_playhead(self):
+        t = self.player.position
+        self._show_playhead(t)
+        self.axis.ensure_visible(t)
+
+    def _show_playhead(self, t):
+        for pane in self.panes:
+            pane.set_playhead(t)
+        self.textgrid_view.playhead = t
+        self.textgrid_view.update()
+
+    # ------------------------------------------------------------------ queries
+
+    def result(self, name: str):
+        """Analysis result, computing it synchronously if its layer is hidden."""
+        if name not in self.manager.results:
+            return self.manager.compute_now(name)
+        return self.manager.results[name]
+
+    def _where(self) -> str:
+        if self.axis.selection:
+            a, b = self.axis.selection
+            return f"{a:.4f}–{b:.4f} s"
+        return f"{self.axis.cursor:.4f} s"
+
+    def query_pitch(self):
+        p = self.result("pitch")
+        if self.axis.selection:
+            st = queries.pitch_stats(p, *self.axis.selection)
+            slope = queries.pitch_mean_abs_slope(p, *self.axis.selection)
+            mean_st = fmt(queries.semitones(st.mean), "st re 100 Hz")
+            self.log.emit(
+                f"Pitch {self._where()}: mean {fmt(st.mean, 'Hz')} ({mean_st}), "
+                f"median {fmt(st.median, 'Hz')}, sd {fmt(st.stdev, 'Hz')}, "
+                f"min {fmt(st.minimum, 'Hz')} at {fmt(st.time_of_minimum, 's', 4)}, "
+                f"max {fmt(st.maximum, 'Hz')} at {fmt(st.time_of_maximum, 's', 4)}, "
+                f"mean |slope| {fmt(slope, 'Hz/s', 1)} ({st.n_frames} voiced frames)"
+            )
+        else:
+            f0 = queries.pitch_at(p, self.axis.cursor)
+            self.log.emit(f"Pitch at {self._where()}: {fmt(f0, 'Hz')} ({fmt(queries.semitones(f0), 'st re 100 Hz')})")
+
+    def query_formants(self):
+        f = self.result("formants")
+        if self.axis.selection:
+            stats = queries.formant_stats(f, *self.axis.selection)
+            parts = [f"F{i + 1} {fmt(s.mean, 'Hz', 0)}" for i, s in enumerate(stats[:4])]
+            self.log.emit(f"Mean formants {self._where()}: " + ", ".join(parts))
+        else:
+            values = queries.formants_at(f, self.axis.cursor)
+            try:
+                bws = queries.formant_bandwidths_at(self.doc.sound, self.manager.settings["formants"], self.axis.cursor)
+            except Exception:  # cursor too close to the edges for a Burg window
+                bws = [float("nan")] * len(values)
+            parts = [
+                f"F{i + 1} {fmt(v, 'Hz', 0)} (B{i + 1} {fmt(b, 'Hz', 0)})"
+                for i, (v, b) in enumerate(zip(values[:4], bws, strict=False))
+            ]
+            self.log.emit(f"Formants at {self._where()}: " + ", ".join(parts))
+
+    def query_intensity(self):
+        r = self.result("intensity")
+        if self.axis.selection:
+            st = queries.intensity_stats(r, *self.axis.selection)
+            self.log.emit(
+                f"Intensity {self._where()}: mean {fmt(st.mean, 'dB')}, "
+                f"min {fmt(st.minimum, 'dB')}, max {fmt(st.maximum, 'dB')}"
+            )
+        else:
+            self.log.emit(f"Intensity at {self._where()}: {fmt(queries.intensity_at(r, self.axis.cursor), 'dB')}")
+
+    def query_voice_report(self):
+        """Praat's voice report over the selection (or the visible window)."""
+        start, end = self.axis.selection or self.axis.view
+        report = voice.voice_report(
+            self.doc.sound, self.manager.settings["pitch"], self.manager.settings["pulses"], start, end
+        )
+        header = f"Voice report for {self.doc.sound.name}, {start:.4f}–{end:.4f} s:"
+        self.log.emit(f"{header}\n{report.text.rstrip()}\n")
+        return report
+
+    def query_duration(self):
+        if self.axis.selection:
+            a, b = self.axis.selection
+            self.log.emit(f"Selection duration: {b - a:.6f} s ({a:.6f}–{b:.6f})")
+        else:
+            self.log.emit(f"Total duration of {self.doc.sound.name}: {self.doc.sound.duration:.6f} s")
+
+    def readout(self, t: float | None, freq: float | None) -> dict[str, str]:
+        """Values at time ``t`` for the info panel; analyses that aren't ready show "…"."""
+        snd = self.doc.sound
+        res = self.manager.results
+        out = {"Time": "" if t is None else f"{t:.4f} s"}
+        if t is None or not 0 <= t <= snd.duration:
+            return out
+        out["Amplitude"] = f"{snd.amplitude_at(t):+.4f}"
+        out["Frequency"] = "" if freq is None else f"{freq:.0f} Hz"
+        out["Pitch"] = fmt(queries.pitch_at(res["pitch"], t), "Hz", 1) if "pitch" in res else "…"
+        if "formants" in res:
+            for i, v in enumerate(queries.formants_at(res["formants"], t)[:4]):
+                out[f"F{i + 1}"] = fmt(v, "Hz", 0)
+        out["Intensity"] = fmt(queries.intensity_at(res["intensity"], t), "dB", 1) if "intensity" in res else "…"
+        return out
+
+    # ------------------------------------------------------------------ export
+
+    def export_selection(self, path: Path):
+        start, end = self.axis.selection or (0.0, self.doc.sound.duration)
+        self.doc.sound.extract(start, end).save(path)
+
+    def export_table(self, name: str, path: Path):
+        """Write an analysis as CSV, restricted to the selection if there is one."""
+        r = self.result(name)
+        if name == "pitch":
+            header, cols = ["time_s", "f0_hz"], [r.times, r.frequencies]
+        elif name == "formants":
+            header = ["time_s"] + [f"F{i + 1}_hz" for i in range(r.frequencies.shape[0])]
+            cols = [r.times, *r.frequencies]
+        else:
+            header, cols = ["time_s", "intensity_db"], [r.times, r.db]
+        rows = np.column_stack(cols)
+        if self.axis.selection:
+            a, b = self.axis.selection
+            rows = rows[(rows[:, 0] >= a) & (rows[:, 0] <= b)]
+        with open(path, "w", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh)
+            w.writerow(header)
+            for row in rows:
+                w.writerow(["" if np.isnan(v) else f"{v:.6g}" for v in row])
+
+    def export_textgrid_table(self, path: Path):
+        tg = self.doc.textgrid
+        with open(path, "w", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh)
+            w.writerow(["tier", "start_s", "end_s", "label"])
+            for tier in tg.tiers:
+                if isinstance(tier, IntervalTier):
+                    for iv in tier.intervals:
+                        if iv.text:
+                            w.writerow([tier.name, f"{iv.xmin:.6f}", f"{iv.xmax:.6f}", iv.text])
+                else:
+                    for pt in tier.points:
+                        w.writerow([tier.name, f"{pt.time:.6f}", f"{pt.time:.6f}", pt.mark])

@@ -1,0 +1,53 @@
+[project]
+name = "phonolab"
+version = "0.2.0"
+description = "Acoustic analysis and annotation for speech: a friendlier Praat"
+readme = "README.md"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Noah Pangilinan", email = "noahpangilinan1@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "av>=19.0.2",
+    "matplotlib>=3.11.2",
+    "numpy>=2.3.5",
+    "platformdirs>=4.14.3",
+    "praat-parselmouth>=0.4.7",
+    "pyqt6>=6.10.2",
+    "pyqtgraph>=0.14.0",
+    "sounddevice>=0.5.5",
+    "soundfile>=0.14.0",
+]
+
+[project.scripts]
+phonolab = "phonolab:main"
+
+[project.gui-scripts]
+phonolab-gui = "phonolab:main"
+
+[build-system]
+requires = ["uv_build>=0.10.3,<0.11.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pyinstaller>=6.22.3",
+    "pytest>=9.0.2",
+    "pytest-qt>=4.5.0",
+    "ruff>=0.15.1",
+    "scipy>=1.18.1",
+]
+
+[tool.ruff]
+line-length = 120
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "N", "SIM"]
+ignore = ["SIM108"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+qt_api = "pyqt6"
