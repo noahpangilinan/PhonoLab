@@ -187,3 +187,19 @@ def test_manipulation_edit_undo_and_resynthesis(window, qtbot, wav):
     editor.open_resynthesis()
     qtbot.waitUntil(lambda: window.tabs.count() == 2, timeout=15000)
     assert window.editor.doc.sound.name == "vowel_manipulated"
+
+
+def test_batch_dialog_writes_csv(qtbot, tmp_path):
+    from phonolab.core import batch
+    from phonolab.core.batch import BatchOptions
+    from phonolab.ui.dialogs.batch_dialog import BatchDialog
+
+    for i, f0 in enumerate((110, 150)):
+        make_vowel(f0=f0, duration=0.5).save(tmp_path / f"s{i}.wav")
+    dialog = BatchDialog(BatchOptions(measures=frozenset({"pitch", "intensity"})), str(tmp_path))
+    qtbot.addWidget(dialog)
+    out = tmp_path / "results.csv"
+    dialog.start(batch.find_sounds(tmp_path), out)
+    qtbot.waitUntil(out.exists, timeout=60000)
+    text = out.read_text(encoding="utf-8")
+    assert "s0.wav" in text and "s1.wav" in text and "f0_mean_hz" in text

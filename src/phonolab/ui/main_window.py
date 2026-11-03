@@ -22,11 +22,13 @@ from PyQt6.QtWidgets import (
 from phonolab import __version__
 from phonolab.audio.player import AudioPlayer
 from phonolab.core import sound_ops
+from phonolab.core.batch import BatchOptions
 from phonolab.core.registry import ANALYSES
 from phonolab.core.settings import Preferences
 from phonolab.core.sound import SUPPORTED_EXTENSIONS, Sound, SoundLoadError
 from phonolab.core.spectrum import SpectrumSettings
 from phonolab.core.textgrid import TextGrid, TextGridError
+from phonolab.ui.dialogs.batch_dialog import BatchDialog
 from phonolab.ui.dialogs.new_textgrid import NewTextGridDialog
 from phonolab.ui.dialogs.record_dialog import RecordDialog
 from phonolab.ui.dialogs.settings_dialog import SettingsDialog
@@ -190,6 +192,14 @@ class MainWindow(QMainWindow):
         self._action(x, "&Annotations (CSV)…", self.export_annotations, needs=tg)
         x.addSeparator()
         self._action(x, "View as &image (PNG)…", self.export_image, needs=e)
+        m.addSeparator()
+        self._action(
+            m,
+            "&Batch measure folder…",
+            self.batch_measure,
+            "Ctrl+B",
+            tip="Measure every sound in a folder (or each labelled interval) into one CSV",
+        )
         m.addSeparator()
         self._action(
             m, "&Close", lambda: self.close_tab(self.tabs.currentIndex()), QKeySequence.StandardKey.Close, needs=e
@@ -762,6 +772,14 @@ class MainWindow(QMainWindow):
         if dialog.exec():
             for ed in self.editors():
                 ed.apply_manipulation_settings(dialog.value())
+
+    def batch_measure(self):
+        p = self.prefs
+        options = BatchOptions(
+            pitch=p.analysis_settings("pitch"), formants=p.analysis_settings("formants"),
+            intensity=p.analysis_settings("intensity"), voice=p.analysis_settings("pulses"),
+        )  # fmt: skip
+        BatchDialog(options, self._last_dir(), self).exec()
 
     def _voice_report(self):
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
