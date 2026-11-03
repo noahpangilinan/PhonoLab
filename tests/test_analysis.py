@@ -12,7 +12,8 @@ from phonolab.core.analysis import (
 from tests.conftest import make_sine, make_vowel
 
 
-@pytest.mark.parametrize("method", list(PitchMethod))
+# SHS is tested separately: it needs natural spectral tilt, which this flat-spectrum pulse vowel lacks.
+@pytest.mark.parametrize("method", [PitchMethod.AUTOCORRELATION, PitchMethod.CROSS_CORRELATION])
 def test_pitch_of_vowel(method):
     snd = make_vowel(f0=120)
     r = analysis.compute_pitch(snd, PitchSettings(method=method))
@@ -110,3 +111,20 @@ def test_formant_bandwidths_at_cursor():
     snd = make_vowel(formants=(700, 1220, 2600), duration=0.6)
     bws = queries.formant_bandwidths_at(snd, FormantSettings(), 0.3)
     assert len(bws) == 5 and 0 < bws[0] < 400
+
+
+def test_shs_pitch_on_harmonic_complex():
+    from phonolab.core.sound import Sound
+
+    sr = 16000
+    t = np.arange(sr) / sr
+    x = 0.1 * sum(np.sin(2 * np.pi * 120 * k * t) / k for k in range(1, 30))
+    r = analysis.compute_pitch(Sound(x, sr), PitchSettings(method=PitchMethod.SUBHARMONIC_SUMMATION))
+    assert np.nanmedian(r.frequencies) == pytest.approx(120, rel=0.02)
+
+
+def test_robust_formants_agree_with_burg():
+    snd = make_vowel(formants=(700, 1220, 2600), duration=0.6)
+    robust = analysis.compute_formants(snd, FormantSettings(method=analysis.FormantMethod.ROBUST))
+    assert np.nanmedian(robust.frequencies[0]) == pytest.approx(700, rel=0.1)
+    assert np.nanmedian(robust.frequencies[1]) == pytest.approx(1220, rel=0.1)

@@ -254,6 +254,7 @@ class MainWindow(QMainWindow):
         m.addSeparator()
         self._action(m, "&Record…", self.record, "Ctrl+R")
         self._action(m, "&New tone or noise…", self.new_sound)
+        self._action(m, "Synthesize &vowel (Klatt)…", self.synthesize_vowel)
         m.addSeparator()
         self._action(m, "E&xtract selection to new tab", self.extract_selection, "Ctrl+E", needs=e)
         self._action(m, "Convert to &mono", lambda: self._derive(sound_ops.to_mono), needs=e)
@@ -582,6 +583,18 @@ class MainWindow(QMainWindow):
         if dialog.exec():
             self.prefs.set_analysis_settings(key, dialog.value())
             self.open_new_sound(sound_ops.generate(dialog.value()))
+
+    def synthesize_vowel(self):
+        key = "op_VowelSettings"
+        dialog = SettingsDialog(self.prefs.analysis_settings(key, sound_ops.VowelSettings), self)
+        if dialog.exec():
+            self.prefs.set_analysis_settings(key, dialog.value())
+            try:
+                sound = sound_ops.synthesize_vowel(dialog.value())
+            except Exception as err:  # Praat rejects e.g. formants above the Nyquist frequency
+                QMessageBox.warning(self, "Synthesize vowel", str(err))
+                return
+            self.open_new_sound(sound)
 
     def record(self):
         dialog = RecordDialog(self)

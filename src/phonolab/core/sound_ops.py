@@ -79,6 +79,21 @@ class ToneSettings:
     sampling_rate: float = setting(44100.0, "Sampling frequency", "Hz", 1000.0, 192000.0, decimals=1)
 
 
+@dataclass(frozen=True)
+class VowelSettings:
+    title = "Synthesize vowel (Klatt)"
+    duration: float = setting(0.4, "Duration", "s", 0.05, 60.0, decimals=3)
+    f0_start: float = setting(150.0, "Pitch at start", "Hz", 20.0, 2000.0)
+    f0_end: float = setting(110.0, "Pitch at end", "Hz", 20.0, 2000.0)
+    f1: float = setting(700.0, "F1", "Hz", 50.0, 10000.0)
+    b1: float = setting(60.0, "B1", "Hz", 10.0, 2000.0)
+    f2: float = setting(1220.0, "F2", "Hz", 50.0, 10000.0)
+    b2: float = setting(70.0, "B2", "Hz", 10.0, 2000.0)
+    f3: float = setting(2600.0, "F3", "Hz", 50.0, 10000.0)
+    b3: float = setting(110.0, "B3", "Hz", 10.0, 2000.0)
+    f4: float = setting(3300.0, "F4", "Hz", 50.0, 10000.0)
+
+
 # --------------------------------------------------------------------------- operations
 
 
@@ -130,6 +145,22 @@ def concatenate(sounds: list[Sound]) -> Sound:
     channels = max(s.n_channels for s in sounds)
     parts = [s.samples if s.n_channels == channels else np.repeat(s.mono[:, None], channels, axis=1) for s in sounds]
     return Sound(np.concatenate(parts), sr, title="concatenated")
+
+
+def synthesize_vowel(s: VowelSettings) -> Sound:
+    """Klatt synthesis of a vowel with a linear pitch glide (Praat's "Create KlattGrid from vowel")."""
+    bandwidth_fraction, formant_spacing = 0.05, 1000.0  # Praat's defaults for F5 and up
+    grid = call(
+        "Create KlattGrid from vowel", "vowel", s.duration, s.f0_start, s.f1, s.b1, s.f2, s.b2, s.f3, s.b3, s.f4,
+        bandwidth_fraction, formant_spacing,
+    )  # fmt: skip
+    call(grid, "Remove pitch points between", 0.0, s.duration)
+    call(grid, "Add pitch point", 0.0, s.f0_start)
+    call(grid, "Add pitch point", s.duration, s.f0_end)
+    out = call(grid, "To Sound")
+    values = out.values[0]
+    peak = float(np.max(np.abs(values))) or 1.0
+    return Sound(0.5 * values / peak, out.sampling_frequency, title=f"vowel_{s.f1:g}_{s.f2:g}")
 
 
 def generate(s: ToneSettings) -> Sound:

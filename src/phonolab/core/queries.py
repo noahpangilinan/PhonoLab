@@ -6,7 +6,7 @@ from dataclasses import dataclass, replace
 
 import numpy as np
 
-from phonolab.core.analysis import FormantResult, FormantSettings, IntensityResult, PitchResult
+from phonolab.core.analysis import FormantResult, FormantSettings, IntensityResult, PitchResult, praat_formant
 from phonolab.core.sound import Sound
 
 
@@ -99,10 +99,7 @@ def formant_bandwidths_at(sound: Sound, s: FormantSettings, t: float) -> list[fl
     part = sound.praat.extract_part(
         from_time=max(0.0, t - margin), to_time=min(sound.duration, t + margin), preserve_times=True
     )
-    formant = part.to_formant_burg(
-        max_number_of_formants=s.n_formants, maximum_formant=s.max_formant,
-        window_length=s.window_length, pre_emphasis_from=s.pre_emphasis_from,
-    )  # fmt: skip
+    formant = praat_formant(part, s)
     return [formant.get_bandwidth_at_time(i + 1, t) for i in range(int(np.ceil(s.n_formants)))]
 
 

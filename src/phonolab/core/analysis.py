@@ -109,6 +109,7 @@ def compute_spectrogram(
 class PitchMethod(Enum):
     AUTOCORRELATION = "autocorrelation"
     CROSS_CORRELATION = "cross-correlation"
+    SUBHARMONIC_SUMMATION = "subharmonic summation (SHS)"
 
 
 @dataclass(frozen=True)
@@ -135,6 +136,13 @@ class PitchResult:
 
 def praat_pitch(snd: parselmouth.Sound, s: PitchSettings) -> parselmouth.Pitch:
     """A Praat Pitch object for ``snd`` with these settings."""
+    if s.method is PitchMethod.SUBHARMONIC_SUMMATION:
+        # Praat's defaults for the SHS-specific parameters (Hermes 1988).
+        max_frequency_component, max_subharmonics, compression, points_per_octave = 1250.0, 15, 0.84, 48
+        return call(
+            snd, "To Pitch (shs)", 0.01, s.floor, s.max_candidates, max_frequency_component,
+            max_subharmonics, compression, s.ceiling, points_per_octave,
+        )  # fmt: skip
     method = snd.to_pitch_ac if s.method is PitchMethod.AUTOCORRELATION else snd.to_pitch_cc
     return method(
         pitch_floor=s.floor,
@@ -160,9 +168,15 @@ def compute_pitch(sound: Sound, s: PitchSettings) -> PitchResult:
 # --------------------------------------------------------------------------- formants
 
 
+class FormantMethod(Enum):
+    BURG = "Burg"
+    ROBUST = "robust (iterative LPC)"
+
+
 @dataclass(frozen=True)
 class FormantSettings:
     title = "Formants"
+    method: FormantMethod = setting(FormantMethod.BURG, "Method")
     max_formant: float = setting(5500.0, "Formant ceiling", "Hz", 1000.0, 20000.0)
     n_formants: float = setting(5.0, "Number of formants", "", 1.0, 7.0, decimals=1)
     window_length: float = setting(0.025, "Window length", "s", 0.001, 1.0, decimals=4)
@@ -177,13 +191,24 @@ class FormantResult:
     intensity_db: np.ndarray  # per-frame intensity, used to hide dots in silence
 
 
-def compute_formants(sound: Sound, s: FormantSettings) -> FormantResult:
-    formant = sound.praat.to_formant_burg(
+def praat_formant(snd: parselmouth.Sound, s: FormantSettings) -> parselmouth.Formant:
+    """A Praat Formant object for ``snd`` with these settings."""
+    if s.method is FormantMethod.ROBUST:
+        n_sigma, iterations, tolerance = 1.5, 5, 1e-6  # Praat's defaults
+        return call(
+            snd, "To Formant (robust)", 0.0, s.n_formants, s.max_formant, s.window_length,
+            s.pre_emphasis_from, n_sigma, iterations, tolerance,
+        )  # fmt: skip
+    return snd.to_formant_burg(
         max_number_of_formants=s.n_formants,
         maximum_formant=s.max_formant,
         window_length=s.window_length,
         pre_emphasis_from=s.pre_emphasis_from,
     )
+
+
+def compute_formants(sound: Sound, s: FormantSettings) -> FormantResult:
+    formant = praat_formant(sound.praat, s)
     times = np.asarray(formant.xs())
     n = int(np.ceil(s.n_formants))
     freqs = np.vstack([call(formant, "To Matrix", i + 1).values[0] for i in range(n)])

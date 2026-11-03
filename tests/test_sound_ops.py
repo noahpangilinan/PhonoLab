@@ -75,3 +75,16 @@ def test_recording_buffer():
     buf.add(np.ones((50, 1), dtype=np.float32))
     assert buf.n_frames == 150 and buf.clipped and buf.peak == 1.0
     assert buf.samples().shape == (150, 1)
+
+
+def test_klatt_vowel_has_requested_formants_and_glide():
+    from phonolab.core.analysis import FormantSettings, compute_formants
+
+    snd = ops.synthesize_vowel(ops.VowelSettings(duration=0.5, f0_start=150, f0_end=100, f1=700, f2=1220))
+    assert snd.duration == pytest.approx(0.5)
+    f0 = compute_pitch(snd, PitchSettings()).frequencies
+    voiced = f0[~np.isnan(f0)]
+    assert voiced[:3].mean() == pytest.approx(150, abs=8) and voiced[-3:].mean() == pytest.approx(100, abs=8)
+    formants = compute_formants(snd, FormantSettings())
+    assert np.nanmedian(formants.frequencies[0]) == pytest.approx(700, rel=0.1)
+    assert np.nanmedian(formants.frequencies[1]) == pytest.approx(1220, rel=0.1)
