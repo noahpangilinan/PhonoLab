@@ -31,7 +31,14 @@ jobs:
         continue-on-error: true
         env:
           QT_QPA_PLATFORM: offscreen
-        run: uv run pytest -q
+        run: |
+          uv run pytest -q --tb=short -rf 2>&1 | tee pytest.txt
+          status=${PIPESTATUS[0]}
+          # Annotations show failures on the run page without opening the logs.
+          grep -E '^(FAILED|ERROR) ' pytest.txt | cut -c1-300 | while read -r line; do
+            echo "::warning title=Test failed::$line"
+          done
+          exit "$status"
 
       - name: Build app
         working-directory: packaging
