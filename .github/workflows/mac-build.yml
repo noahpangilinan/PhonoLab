@@ -26,8 +26,9 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked
 
-      # Reported, but doesn't stop the build: a failing test shouldn't hide a usable app.
+      # A failure doesn't stop the build, so the disk images still appear; the last step fails the run.
       - name: Run tests
+        id: tests
         continue-on-error: true
         env:
           QT_QPA_PLATFORM: offscreen
@@ -67,3 +68,7 @@ jobs:
           name: PhonoLab-macos-${{ matrix.arch }}
           path: PhonoLab-macos-${{ matrix.arch }}.dmg
           retention-days: 30
+
+      - name: Fail the run if tests failed
+        if: steps.tests.outcome == 'failure'
+        run: exit 1

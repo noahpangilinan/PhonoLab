@@ -333,6 +333,7 @@ def test_mac_delete_key_removes_boundary(window, qtbot, wav, monkeypatch):
     view.setFocus()
     editor.axis.set_cursor(0.3)
     qtbot.keyClick(view, Qt.Key.Key_Return)
+    monkeypatch.setattr("phonolab.ui.editor.textgrid_pane.sys.platform", "win32")
     qtbot.keyClick(view, Qt.Key.Key_Backspace)  # plain Backspace does nothing outside macOS
     assert len(editor.doc.textgrid.tiers[0].boundaries) == 1
     monkeypatch.setattr("phonolab.ui.editor.textgrid_pane.sys.platform", "darwin")
