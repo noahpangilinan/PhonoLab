@@ -2,7 +2,7 @@ name: macOS build
 
 on:
   push:
-    branches: [main, praat7-engine]
+    branches: [main]
     tags: ["v*"]
   workflow_dispatch:
 
