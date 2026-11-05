@@ -101,7 +101,7 @@ def test_range_stats_report_extremes_and_times():
 
 def test_pitch_slope_and_semitones():
     times = np.array([0.0, 0.01, 0.02, 0.03])
-    p = analysis.PitchResult(times, np.array([100.0, 101.0, np.nan, 103.0]), np.ones(4))
+    p = analysis.PitchResult(times, np.array([100.0, 101.0, np.nan, 103.0]))
     assert queries.pitch_mean_abs_slope(p, 0, 1) == pytest.approx(100.0)  # only the voiced pair counts
     assert queries.semitones(200.0) == pytest.approx(12.0)
     assert np.isnan(queries.semitones(float("nan")))

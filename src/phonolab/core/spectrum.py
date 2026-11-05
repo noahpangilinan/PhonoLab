@@ -8,6 +8,7 @@ import numpy as np
 import parselmouth
 from parselmouth.praat import call
 
+from phonolab.core import praat_engine
 from phonolab.core.analysis import setting
 from phonolab.core.sound import Sound
 
@@ -80,6 +81,13 @@ def _result(kind, start, end, spectrum, ltas, s: SpectrumSettings) -> SpectrumRe
 
 def cpps(sound: Sound, start: float, end: float) -> float:
     """Smoothed cepstral peak prominence (dB) with Praat's standard settings (Hillenbrand-style)."""
+    if praat_engine.available():
+        body = f"""Extract part: {max(0.0, start)}, {min(sound.duration, end)}, "rectangular", 1, "yes"
+To PowerCepstrogram: 60, 0.002, 5000, 50
+value = Get CPPS: "no", 0.02, 0.0005, 60, 330, 0.05, "parabolic", 0.001, 0, "Straight", "Robust"
+writeInfoLine: value"""
+        output = praat_engine.analyse(sound, body)[0].strip()
+        return float("nan") if output == "--undefined--" else float(output)
     part = _part(sound, start, end, window=False)
     cepstrogram = call(part, "To PowerCepstrogram", 60.0, 0.002, 5000.0, 50.0)
     return call(

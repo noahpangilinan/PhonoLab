@@ -14,6 +14,7 @@ import numpy as np
 import parselmouth
 from parselmouth.praat import call
 
+from phonolab.core import praat_engine
 from phonolab.core.sound import Sound
 
 
@@ -133,7 +134,6 @@ class PitchSettings:
 class PitchResult:
     times: np.ndarray
     frequencies: np.ndarray  # Hz; NaN where unvoiced
-    strengths: np.ndarray
 
 
 def praat_pitch(snd: parselmouth.Sound, s: PitchSettings) -> parselmouth.Pitch:
@@ -159,12 +159,28 @@ def praat_pitch(snd: parselmouth.Sound, s: PitchSettings) -> parselmouth.Pitch:
     )
 
 
+def pitch_command(s: PitchSettings) -> str:
+    """The Praat script line that makes a Pitch from the selected Sound."""
+    if s.method is PitchMethod.SUBHARMONIC_SUMMATION:
+        return f"To Pitch (shs): 0.01, {s.floor}, {s.max_candidates}, 1250, 15, 0.84, {s.ceiling}, 48"
+    kind = "ac" if s.method is PitchMethod.AUTOCORRELATION else "cc"
+    return (
+        f"To Pitch ({kind}): 0, {s.floor}, {s.max_candidates}, {praat_engine.praat_bool(s.very_accurate)}, "
+        f"{s.silence_threshold}, {s.voicing_threshold}, {s.octave_cost}, {s.octave_jump_cost}, "
+        f"{s.voiced_unvoiced_cost}, {s.ceiling}"
+    )
+
+
 def compute_pitch(sound: Sound, s: PitchSettings) -> PitchResult:
-    pitch = praat_pitch(sound.praat, s)
-    sel = pitch.selected_array
-    freqs = sel["frequency"].astype(float)
+    if praat_engine.available():
+        _, matrices = praat_engine.analyse(sound, f'{pitch_command(s)}\nTo Matrix\n@export: "pitch"')
+        times, rows = matrices["pitch"]
+        freqs = rows[0]
+    else:
+        pitch = praat_pitch(sound.praat, s)
+        times, freqs = np.asarray(pitch.xs()), pitch.selected_array["frequency"].astype(float)
     freqs[freqs == 0] = np.nan
-    return PitchResult(np.asarray(pitch.xs()), freqs, sel["strength"].astype(float))
+    return PitchResult(times, freqs)
 
 
 # --------------------------------------------------------------------------- formants
@@ -209,16 +225,32 @@ def praat_formant(snd: parselmouth.Sound, s: FormantSettings) -> parselmouth.For
     )
 
 
+def formant_command(s: FormantSettings) -> str:
+    """The Praat script line that makes a Formant from the selected Sound."""
+    common = f"{s.n_formants}, {s.max_formant}, {s.window_length}, {s.pre_emphasis_from}"
+    if s.method is FormantMethod.ROBUST:
+        return f"To Formant (robust): 0, {common}, 1.5, 5, 0.000001"
+    return f"To Formant (burg): 0, {common}"
+
+
 def compute_formants(sound: Sound, s: FormantSettings) -> FormantResult:
-    formant = praat_formant(sound.praat, s)
-    times = np.asarray(formant.xs())
     n = int(np.ceil(s.n_formants))
-    freqs = np.vstack([call(formant, "To Matrix", i + 1).values[0] for i in range(n)])
+    if praat_engine.available():
+        exports = "\n".join(f'selectObject: f\nTo Matrix: {i + 1}\n@export: "f{i}"' for i in range(n))
+        intensity = 'selectObject: s\nTo Intensity: 100, 0, "no"\nDown to Matrix\n@export: "intensity"'
+        _, matrices = praat_engine.analyse(sound, f"f = {formant_command(s)}\n{exports}\n{intensity}")
+        times = matrices["f0"][0]
+        freqs = np.vstack([matrices[f"f{i}"][1][0] for i in range(n)])
+        db_times, db = matrices["intensity"][0], matrices["intensity"][1][0]
+    else:
+        formant = praat_formant(sound.praat, s)
+        times = np.asarray(formant.xs())
+        freqs = np.vstack([call(formant, "To Matrix", i + 1).values[0] for i in range(n)])
+        intensity = sound.praat.to_intensity(minimum_pitch=100.0, subtract_mean=False)
+        db_times, db = intensity.xs(), intensity.values[0]
     freqs[freqs <= 0] = np.nan
     # Frame intensity for Praat-style dot suppression in quiet regions.
-    intensity = sound.praat.to_intensity(minimum_pitch=100.0, subtract_mean=False)
-    frame_db = np.interp(times, intensity.xs(), intensity.values[0])
-    return FormantResult(times, freqs, frame_db)
+    return FormantResult(times, freqs, np.interp(times, db_times, db))
 
 
 # --------------------------------------------------------------------------- intensity
@@ -243,5 +275,10 @@ def compute_intensity(sound: Sound, s: IntensitySettings) -> IntensityResult:
     # Praat needs at least 6.4 / minimum_pitch seconds of signal.
     if sound.duration < 6.4 / s.minimum_pitch:
         return IntensityResult(np.array([]), np.array([]))
+    if praat_engine.available():
+        subtract = praat_engine.praat_bool(s.subtract_mean)
+        body = f'To Intensity: {s.minimum_pitch}, 0, {subtract}\nDown to Matrix\n@export: "intensity"'
+        times, rows = praat_engine.analyse(sound, body)[1]["intensity"]
+        return IntensityResult(times, rows[0])
     intensity = sound.praat.to_intensity(minimum_pitch=s.minimum_pitch, subtract_mean=s.subtract_mean)
     return IntensityResult(np.asarray(intensity.xs()), np.asarray(intensity.values[0]))
