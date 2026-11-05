@@ -66,6 +66,14 @@ class ManipulationPane(TimePane):
         self._drag: tuple[int, Tier] | None = None  # (point index, working copy) while dragging
         self.set_status("Analysing pitch for manipulation…")
 
+    def retheme(self):
+        super().retheme()
+        self.original_curve.setPen(pg.mkPen(COLORS["muted"], width=1, style=Qt.PenStyle.DashLine))
+        self.curve.setPen(pg.mkPen(COLORS["manipulation"], width=2))
+        self.points.setBrush(pg.mkBrush(COLORS["manipulation"]))
+        self.status.setColor(COLORS["muted"])
+        self.refresh()  # rebuilds the duration labels in the new colour
+
     # ------------------------------------------------------------------ state
 
     def set_state(self, state: ManipulationState | None):

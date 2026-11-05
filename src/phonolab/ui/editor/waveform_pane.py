@@ -86,6 +86,12 @@ class WaveformPane(TimePane):
         self.pulse_times = np.zeros(0)
         self.view_updated(*axis.view)
 
+    def retheme(self):
+        super().retheme()
+        for curve in self.curves:
+            curve.setPen(pg.mkPen(COLORS["waveform"], width=1))
+        self.pulse_marks.setPen(pg.mkPen(COLORS["pulses"], width=1))
+
     def set_pulses(self, times: np.ndarray | None):
         self.pulse_times = np.zeros(0) if times is None else times
         self._update_pulses(*self.axis.view)

@@ -6,7 +6,7 @@ import numpy as np  # noqa: E402
 import pytest  # noqa: E402
 from PyQt6.QtCore import QSettings, Qt  # noqa: E402
 from PyQt6.QtGui import QAction  # noqa: E402
-from PyQt6.QtWidgets import QMessageBox  # noqa: E402
+from PyQt6.QtWidgets import QApplication, QMessageBox  # noqa: E402
 
 from phonolab.core.textgrid import TextGrid  # noqa: E402
 from phonolab.ui.theme import configure_pyqtgraph  # noqa: E402
@@ -361,3 +361,47 @@ def test_queries_have_shortcuts_without_function_keys(window):
     shortcuts = {a.text(): [k.toString() for k in a.shortcuts()] for a in window.findChildren(QAction)}
     assert shortcuts["Get &pitch"] == ["F5", "Ctrl+1"]
     assert "Ctrl+G" in shortcuts["Find &next"]
+
+
+def test_theme_switch_applies_live_to_open_editors(window, qtbot, wav):
+    from phonolab.ui import theme
+
+    window.open_sound(str(wav))
+    editor = window.editor
+    window._show_manipulation()
+    qtbot.waitUntil(lambda: editor.doc.manipulation is not None, timeout=15000)
+    qtbot.waitUntil(lambda: "spectrogram" in editor.manager.results, timeout=15000)
+    colours = lambda: (  # noqa: E731
+        editor.waveform.backgroundBrush().color().name(),
+        editor.waveform.curves[0].opts["pen"].color().name(),
+        editor.waveform.getAxis("left").textPen().color().name(),
+        editor.overview.backgroundBrush().color().name(),
+        editor.manipulation_pane.curve.opts["pen"].color().name(),
+        window.spectrum_panel.curve.opts["pen"].color().name(),
+    )
+
+    def expected(name):
+        c = theme.THEMES[name]
+        return (c["background"], c["waveform"], c["foreground"], c["background"], c["manipulation"], c["waveform"])
+
+    try:
+        window._set_theme("dark")
+        assert colours() == expected("dark")
+        assert editor.spectrogram.image.lut[0][:3].tolist() == list(
+            bytes.fromhex(theme.THEMES["dark"]["background"][1:])
+        )
+        window._set_theme("light")
+        assert colours() == expected("light")
+    finally:
+        theme.apply_theme(QApplication.instance(), "light")
+
+
+def test_system_theme_change_only_followed_in_system_mode(window, monkeypatch):
+    calls = []
+    monkeypatch.setattr(window, "_apply_theme", lambda: calls.append(1))
+    window.prefs.set_theme("dark")
+    window._on_system_colours_changed()
+    assert calls == []
+    window.prefs.set_theme("system")
+    window._on_system_colours_changed()
+    assert calls == [1]

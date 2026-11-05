@@ -6,7 +6,7 @@ import pyqtgraph as pg
 from PyQt6.QtCore import Qt
 
 from phonolab.ui.editor.time_axis import TimeAxisController
-from phonolab.ui.theme import COLORS
+from phonolab.ui.theme import COLORS, style_plot
 
 # Every pane reserves the same axis widths so their plot areas line up exactly.
 LEFT_AXIS_WIDTH = 64
@@ -109,6 +109,13 @@ class TimePane(pg.PlotWidget):
         self.scene().sigMouseMoved.connect(self._on_mouse_moved)
         self._on_view(*axis.view)
         self.cursor_line.setPos(axis.cursor)
+
+    def retheme(self):
+        """Re-read colours after a theme change. Subclasses add their own items."""
+        style_plot(self)
+        self.selection_item.setBrush(pg.mkBrush(COLORS["selection"]))
+        self.cursor_line.setPen(pg.mkPen(COLORS["cursor"], width=1, style=Qt.PenStyle.DashLine))
+        self.playhead.setPen(pg.mkPen(COLORS["playhead"], width=2))
 
     def _on_view(self, start: float, end: float):
         self.vb.setXRange(start, end, padding=0)

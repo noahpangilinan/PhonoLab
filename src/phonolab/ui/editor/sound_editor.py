@@ -8,6 +8,7 @@ from pathlib import Path
 import numpy as np
 import pyqtgraph as pg
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLineEdit,
@@ -38,7 +39,7 @@ from phonolab.ui.editor.voicing_bar import VoicingBar
 from phonolab.ui.editor.waveform_pane import Envelope, WaveformPane
 from phonolab.ui.ipa_palette import IpaPalette
 from phonolab.ui.manipulation import ManipulationState
-from phonolab.ui.theme import COLORS
+from phonolab.ui.theme import COLORS, style_plot
 from phonolab.ui.workers import AnalysisManager
 
 PLAYHEAD_INTERVAL_MS = 16
@@ -93,15 +94,28 @@ class OverviewStrip(pg.PlotWidget):
         plot.getAxis("bottom").setHeight(2)
         mono = sound.mono
         x, y = Envelope(mono, sound.sampling_rate).render(0, sound.duration, 1500)
-        plot.plot(x, y, pen=pg.mkPen(COLORS["muted"]))
+        self.curve = plot.plot(x, y, pen=pg.mkPen(COLORS["muted"]))
         peak = float(np.max(np.abs(mono))) or 1.0
         plot.getViewBox().setRange(xRange=(0, sound.duration), yRange=(-peak, peak), padding=0)
         self.window_box = pg.LinearRegionItem(
-            movable=False, brush=pg.mkBrush(31, 119, 180, 50), pen=pg.mkPen(COLORS["playhead"])
+            movable=False, brush=self._window_brush(), pen=pg.mkPen(COLORS["playhead"])
         )
         self.addItem(self.window_box)
         axis.view_changed.connect(lambda a, b: self.window_box.setRegion((a, b)))
         self.window_box.setRegion(axis.view)
+
+    @staticmethod
+    def _window_brush():
+        colour = QColor(COLORS["playhead"])
+        colour.setAlpha(50)
+        return pg.mkBrush(colour)
+
+    def retheme(self):
+        style_plot(self)
+        self.curve.setPen(pg.mkPen(COLORS["muted"]))
+        self.window_box.setBrush(self._window_brush())
+        for line in self.window_box.lines:
+            line.setPen(pg.mkPen(COLORS["playhead"]))
 
 
 class SoundEditor(QWidget):
@@ -251,6 +265,14 @@ class SoundEditor(QWidget):
         if name in STANDALONE_LAYERS:
             return self.prefs.pane_visible(name, name not in HIDDEN_BY_DEFAULT)
         return self.spectrogram.visible[name]
+
+    def retheme(self):
+        """Re-read colours after a theme change."""
+        self.overview.retheme()
+        for pane in self.panes:
+            pane.retheme()
+        self.textgrid_view.update()
+        self.voicing_bar.update()
 
     def apply_settings(self, name: str, settings):
         self.prefs.set_analysis_settings(name, settings)

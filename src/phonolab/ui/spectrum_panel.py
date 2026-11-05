@@ -20,7 +20,7 @@ from PyQt6.QtWidgets import (
 from phonolab.core import spectrum
 from phonolab.core.queries import fmt
 from phonolab.core.spectrum import SpectrumResult, SpectrumSettings
-from phonolab.ui.theme import COLORS
+from phonolab.ui.theme import COLORS, style_plot
 
 log = logging.getLogger(__name__)
 
@@ -84,6 +84,10 @@ class SpectrumPanel(QDockWidget):
         self._timer = QTimer(self, singleShot=True, interval=UPDATE_DELAY_MS)
         self._timer.timeout.connect(self.update_spectrum)
         self.visibilityChanged.connect(lambda visible: visible and self.schedule_update())
+
+    def retheme(self):
+        style_plot(self.plot)
+        self.curve.setPen(pg.mkPen(COLORS["waveform"], width=1.5))
 
     def set_editor(self, editor) -> None:
         if self.editor is not None:

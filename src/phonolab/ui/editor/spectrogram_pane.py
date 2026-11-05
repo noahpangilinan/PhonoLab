@@ -94,6 +94,13 @@ class SpectrogramPane(TimePane):
         for name in self.LAYERS:
             self._on_result(name)
 
+    def retheme(self):
+        super().retheme()
+        self.formant_dots.setBrush(pg.mkBrush(COLORS["formant"]))
+        self.pitch_curve.setPen(pg.mkPen(COLORS["pitch"], width=3))
+        self.intensity_curve.setPen(pg.mkPen(COLORS["intensity"], width=2))
+        self.apply_settings()  # rebuilds the colour map and the coloured right-axis label
+
     def set_layer_visible(self, name: str, visible: bool):
         self.visible[name] = visible
         item = {

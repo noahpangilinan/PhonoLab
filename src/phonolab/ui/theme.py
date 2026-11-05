@@ -1,6 +1,7 @@
 """Look and feel: design tokens, plot colours and the application stylesheet.
 
-Widgets read ``COLORS`` when they are built, so the theme is applied once at start-up.
+Plots copy colours from ``COLORS`` when they're built, so each has a ``retheme()`` method that
+``MainWindow`` calls after ``apply_theme``. Custom-painted widgets read ``COLORS`` as they paint.
 The light theme is built from white surfaces, light blues and cool greys.
 """
 
@@ -123,6 +124,16 @@ def configure_pyqtgraph() -> None:
         antialias=False,
         imageAxisOrder="row-major",
     )
+
+
+def style_plot(widget: pg.PlotWidget) -> None:
+    """Apply the current background and axis colours to a plot."""
+    widget.setBackground(COLORS["background"])
+    plot = widget.getPlotItem()
+    for side in ("left", "bottom", "right"):
+        axis = plot.getAxis(side)
+        axis.setPen(COLORS["foreground"])
+        axis.setTextPen(COLORS["foreground"])
 
 
 def resolve(choice: str, app=None) -> str:

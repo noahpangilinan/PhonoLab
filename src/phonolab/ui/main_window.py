@@ -41,7 +41,7 @@ from phonolab.ui.log_panel import LogPanel
 from phonolab.ui.script_window import ScriptWindow
 from phonolab.ui.spectrum_panel import SpectrumPanel
 from phonolab.ui.start_page import StartPage
-from phonolab.ui.theme import THEME_CHOICES
+from phonolab.ui.theme import THEME_CHOICES, apply_theme
 
 log = logging.getLogger(__name__)
 
@@ -131,6 +131,7 @@ class MainWindow(QMainWindow):
         self.statusBar().addPermanentWidget(self.busy_label)
         self._busy: set[str] = set()
         self.script_window: ScriptWindow | None = None
+        QApplication.styleHints().colorSchemeChanged.connect(self._on_system_colours_changed)
         self._hidden_docks: list | None = None  # docks hidden while the start page shows
 
         self._editor_actions: list[QAction] = []
@@ -476,7 +477,17 @@ class MainWindow(QMainWindow):
 
     def _set_theme(self, choice: str):
         self.prefs.set_theme(choice)
-        self.show_message(f"{choice.title()} theme: restart PhonoLab to apply it everywhere")
+        self._apply_theme()
+
+    def _apply_theme(self):
+        apply_theme(QApplication.instance(), self.prefs.theme())
+        for editor in self.editors():
+            editor.retheme()
+        self.spectrum_panel.retheme()
+
+    def _on_system_colours_changed(self):
+        if self.prefs.theme() == "system":
+            self._apply_theme()
 
     def show_message(self, text: str):
         self.statusBar().showMessage(text, 5000)
