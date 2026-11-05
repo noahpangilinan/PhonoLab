@@ -8,15 +8,18 @@ from __future__ import annotations
 import contextlib
 import io
 import os
+import re
 import shlex
 import tempfile
 import traceback
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import numpy as np
 import parselmouth
 from parselmouth.praat import call, run
 
+from phonolab.core import praat_engine
 from phonolab.core.sound import Sound
 from phonolab.core.textgrid import TextGrid
 
@@ -60,8 +63,76 @@ def _from_praat_textgrid(obj) -> TextGrid:
         os.remove(path)
 
 
+# Runs the user's script with the Sound (and TextGrid) selected, then saves whatever it left selected.
+_WRAPPER = """original = Read from file: "{wav}"
+Rename: "{name}"
+{load_textgrid}
+{select}
+runScript: "{script}"{arguments}
+sounds# = selected# ("Sound")
+grids# = selected# ("TextGrid")
+for i to size (sounds#)
+    selectObject: sounds# [i]
+    appendFileLine: "{folder}/names.txt", selected$ ("Sound")
+    Save as binary file: "{folder}/sound" + string$ (i) + ".Sound"
+endfor
+if size (grids#) > 0
+    selectObject: grids# [1]
+    Save as text file: "{folder}/result.TextGrid"
+endif
+"""
+
+
+def _praat_argument(value) -> str:
+    if isinstance(value, float):
+        return repr(value)
+    return '"' + value.replace('"', '""') + '"'
+
+
+def _run_on_engine(sound: Sound, textgrid: TextGrid | None, script: str, arguments: str) -> ScriptResult:
+    """Run on the bundled Praat program. Scripts can save files, as they can from Praat's script window."""
+    args = "".join(", " + _praat_argument(a) for a in parse_arguments(arguments))
+    with tempfile.TemporaryDirectory(prefix="phonolab-script-") as folder_name:
+        folder = Path(folder_name)
+        (folder / "user.praat").write_text(script, encoding="utf-8")
+        load_textgrid, select = "", "selectObject: original"
+        if textgrid is not None:
+            textgrid.write(folder / "input.TextGrid")
+            load_textgrid = (
+                f'grid = Read from file: "{folder.as_posix()}/input.TextGrid"\nRename: "{_safe(sound.name)}"'
+            )
+            select = "selectObject: original, grid"
+        wrapper = _WRAPPER.format(
+            wav=praat_engine.sound_file(sound).as_posix(), name=_safe(sound.name), load_textgrid=load_textgrid,
+            select=select, script=(folder / "user.praat").as_posix(), arguments=args, folder=folder.as_posix(),
+        )  # fmt: skip
+        try:
+            output = praat_engine.run_script(wrapper)
+        except praat_engine.PraatEngineError as e:
+            return ScriptResult(error=str(e))
+        result = ScriptResult(output=output)
+        names_file = folder / "names.txt"
+        names = names_file.read_text(encoding="utf-8").split("\n") if names_file.exists() else []
+        for i, name in enumerate(filter(None, names), 1):
+            out = parselmouth.read(str(folder / f"sound{i}.Sound"))
+            values = out.values.T.copy()
+            # Leave the input out unless the script changed it: only new sounds come back.
+            if values.shape[1] != 1 or len(values) != sound.n_samples or not np.array_equal(values[:, 0], sound.mono):
+                result.sounds.append((name, values, out.sampling_frequency))
+        if (folder / "result.TextGrid").exists():
+            result.textgrid = TextGrid.read(folder / "result.TextGrid")
+        return result
+
+
+def _safe(name: str) -> str:
+    """Praat object names allow only letters, digits and underscores."""
+    return re.sub(r"[^A-Za-z0-9_]", "_", name)
+
+
 def run_praat(sound: Sound, textgrid: TextGrid | None, script: str, arguments: str = "") -> ScriptResult:
     """Run a Praat script with the Sound (and TextGrid) selected, like running it from Praat's object list."""
+    if praat_engine.available():
+        return _run_on_engine(sound, textgrid, script, arguments)
     praat_sound = sound.praat.copy()
     praat_sound.name = sound.name
     objects = [praat_sound]

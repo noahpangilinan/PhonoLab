@@ -142,7 +142,7 @@ def test_pulses_layer_and_voice_report(window, qtbot, wav):
     assert "Jitter (local)" in window.log_panel.text.toPlainText()
 
 
-def test_spectrum_panel_follows_selection(window, wav):
+def test_spectrum_panel_follows_selection(window, qtbot, wav):
     window.open_sound(str(wav))
     editor = window.editor
     window._show_spectrum()
@@ -150,8 +150,8 @@ def test_spectrum_panel_follows_selection(window, wav):
     window.spectrum_panel.update_spectrum()
     r = window.spectrum_panel.result
     assert r is not None and (r.start, r.end) == (0.2, 0.4)
-    window.spectrum_panel.log_cpps()
-    assert "CPPS" in window.log_panel.text.toPlainText()
+    window.spectrum_panel.log_cpps()  # runs in a worker
+    qtbot.waitUntil(lambda: "CPPS" in window.log_panel.text.toPlainText(), timeout=30000)
 
 
 def test_derived_sound_opens_unsaved_and_saves(window, wav, tmp_path, monkeypatch):

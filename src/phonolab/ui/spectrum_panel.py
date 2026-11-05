@@ -38,6 +38,7 @@ class SpectrumPanel(QDockWidget):
         self.settings = settings
         self.editor = None
         self.result: SpectrumResult | None = None
+        self._cpps_range = (0.0, 0.0)
 
         body = QWidget()
         layout = QVBoxLayout(body)
@@ -94,10 +95,15 @@ class SpectrumPanel(QDockWidget):
             for sig in (self.editor.axis.cursor_changed, self.editor.axis.selection_changed):
                 with contextlib.suppress(TypeError, RuntimeError):
                     sig.disconnect(self.schedule_update)
+            with contextlib.suppress(TypeError, RuntimeError):
+                self.editor.manager.job_done.disconnect(self._on_job_done)
+                self.editor.manager.job_failed.disconnect(self._on_job_failed)
         self.editor = editor
         if editor is not None:
             editor.axis.cursor_changed.connect(self.schedule_update)
             editor.axis.selection_changed.connect(self.schedule_update)
+            editor.manager.job_done.connect(self._on_job_done)
+            editor.manager.job_failed.connect(self._on_job_failed)
         self.schedule_update()
 
     def set_settings(self, settings: SpectrumSettings) -> None:
@@ -155,12 +161,18 @@ class SpectrumPanel(QDockWidget):
         )
 
     def log_cpps(self):
+        """Measure CPPS in a worker: it takes about a third of the sound's duration."""
         if self.editor is None:
             return
-        start, end = self.editor.axis.selection or self.editor.axis.view
-        try:
-            value = spectrum.cpps(self.editor.doc.sound, start, end)
-        except Exception as e:  # too short, silent, etc.
-            self.log_message.emit(f"CPPS {start:.4f}–{end:.4f} s: --undefined-- ({e})")
-            return
-        self.log_message.emit(f"CPPS {start:.4f}–{end:.4f} s: {value:.2f} dB")
+        self._cpps_range = self.editor.axis.selection or self.editor.axis.view
+        self.editor.manager.submit("cpps", spectrum.cpps, *self._cpps_range)
+
+    def _on_job_done(self, key: str, value):
+        if key == "cpps":
+            start, end = self._cpps_range
+            self.log_message.emit(f"CPPS {start:.4f}–{end:.4f} s: {fmt(value, 'dB')}")
+
+    def _on_job_failed(self, key: str, message: str):
+        if key == "cpps":  # too short, silent, etc.
+            start, end = self._cpps_range
+            self.log_message.emit(f"CPPS {start:.4f}–{end:.4f} s: --undefined-- ({message})")
