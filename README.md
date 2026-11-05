@@ -22,21 +22,22 @@ TextGrids are read and written in Praat's own formats, so you can move between P
 4. [The editor](#the-editor)
 5. [Annotation (TextGrids)](#annotation-textgrids)
 6. [Measurements and queries](#measurements-and-queries)
-7. [Manipulation (PSOLA)](#manipulation-psola)
-8. [Sound operations, recording and synthesis](#sound-operations-recording-and-synthesis)
-9. [Batch measurement](#batch-measurement)
-10. [Scripting (Praat and Python)](#scripting-praat-and-python)
-11. [Publication figures](#publication-figures)
-12. [Analysis settings and defaults](#analysis-settings-and-defaults)
-13. [Keyboard shortcuts](#keyboard-shortcuts)
-14. [Menu reference](#menu-reference)
-15. [How results relate to Praat](#how-results-relate-to-praat)
-16. [Files, formats and preferences](#files-formats-and-preferences)
-17. [Architecture](#architecture)
-18. [Development](#development)
-19. [Troubleshooting](#troubleshooting)
-20. [Not yet covered](#not-yet-covered)
-21. [License](#license)
+7. [Long recordings](#long-recordings)
+8. [Manipulation (PSOLA)](#manipulation-psola)
+9. [Sound operations, recording and synthesis](#sound-operations-recording-and-synthesis)
+10. [Batch measurement](#batch-measurement)
+11. [Scripting (Praat and Python)](#scripting-praat-and-python)
+12. [Publication figures](#publication-figures)
+13. [Analysis settings and defaults](#analysis-settings-and-defaults)
+14. [Keyboard shortcuts](#keyboard-shortcuts)
+15. [Menu reference](#menu-reference)
+16. [How results relate to Praat](#how-results-relate-to-praat)
+17. [Files, formats and preferences](#files-formats-and-preferences)
+18. [Architecture](#architecture)
+19. [Development](#development)
+20. [Troubleshooting](#troubleshooting)
+21. [Not yet covered](#not-yet-covered)
+22. [License](#license)
 
 ---
 
@@ -45,6 +46,7 @@ TextGrids are read and written in Praat's own formats, so you can move between P
 | Area | What you get |
 | --- | --- |
 | **Viewing** | Overview strip, multichannel waveform, spectrogram with pitch, formant and intensity overlays, voicing bars, glottal pulses, annotation tiers, all on one time axis |
+| **Long recordings** | Hours-long files open in a small amount of memory, with analyses on the visible stretch |
 | **Speed** | Analyses run in background processes, so the window never freezes. The waveform is drawn at screen resolution, and the spectrogram is recomputed for what you're looking at. Five-minute recordings stay smooth. |
 | **Annotation** | Interval and point tiers, boundary editing by keyboard or mouse, type-to-label, IPA chart, Praat backslash codes shown as IPA, search, undo/redo |
 | **Measurement** | Live readout under the mouse, selection statistics, pitch/formant/intensity queries, voice report (jitter, shimmer, HNR), spectral slice, LTAS, spectral moments, CPPS |
@@ -270,6 +272,27 @@ and amplitude factors).
 - Each spectrum lists its **spectral moments** (centre of gravity, standard deviation, skewness,
   kurtosis), with the power set in the spectrum settings. Moments are skipped for LTAS ranges over 30 s.
 - **Measure CPPS** logs the smoothed cepstral peak prominence using Praat's standard parameters (see below).
+
+---
+
+## Long recordings
+
+Files over about 20 minutes of stereo audio (100 million sample values) open as long recordings. PhonoLab
+streams them once into a working file on disk, with a progress bar, so memory use stays small: a 3-hour
+stereo WAV takes about 70 MB beyond the app's usual footprint. Allow about twice the size of a 16-bit WAV in
+free disk space. The working file is deleted when you close the tab.
+
+Waveform, zooming, selecting, playback and annotation work as usual. The differences:
+
+- **Analyses cover the visible stretch.** Zoomed out past 60 seconds, the panes ask you to zoom in, as Praat
+  does with long sounds. Zoomed in, PhonoLab analyses around the view and re-analyses when you move away.
+- **Queries answer only for what's analysed.** If a selection isn't fully in view, PhonoLab asks you to zoom
+  rather than report figures for part of it.
+- **Some commands need a part.** Manipulation, filters and other whole-sound operations ask you to select up
+  to 10 minutes and use *Sound ▸ Extract selection*, which gives an ordinary sound. Scripts run on the
+  selection or the visible part, without the TextGrid.
+- **Batch measurement** handles labelled intervals one at a time. For whole files it combines pitch, formants
+  and intensity across chunks, and skips voice report, CPPS and spectral moments, noting that in `error`.
 
 ---
 

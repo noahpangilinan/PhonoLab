@@ -140,3 +140,14 @@ def test_batch_measures_long_files_in_chunks(long_threshold, tmp_path, monkeypat
     grid.write(path.with_suffix(".TextGrid"))
     (row,) = batch.measure_file(path, BatchOptions(measures=frozenset({"pitch"}), tier="words"))
     assert row["start_s"] == 1.0 and row["f0_median_hz"] == pytest.approx(120, abs=2) and "error" not in row
+
+
+def test_playback_reads_a_long_sound_without_copying_it(wav, long_threshold):
+    from phonolab.audio.player import PlaybackBuffer
+
+    long = Sound.from_file(wav)
+    samples = np.ascontiguousarray(long.samples, dtype=np.float32)  # what AudioPlayer.play does
+    assert np.shares_memory(samples, long.samples)
+    out = np.empty((64, 2), dtype=np.float32)
+    PlaybackBuffer(samples, 1000, 2000).fill(out)
+    assert np.array_equal(out, long.samples[1000:1064])

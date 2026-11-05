@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import atexit
 import logging
 from pathlib import Path
 
@@ -52,6 +53,7 @@ from phonolab.ui.theme import THEME_CHOICES, apply_theme
 
 log = logging.getLogger(__name__)
 
+RELEASE_DELAY_MS = 300
 SOUND_FILTER = "Sound files (" + " ".join(f"*{e}" for e in SUPPORTED_EXTENSIONS) + ");;All files (*)"
 TEXTGRID_FILTER = "TextGrid files (*.TextGrid *.textgrid);;All files (*)"
 
@@ -803,7 +805,8 @@ class MainWindow(QMainWindow):
         self.tabs.removeTab(index)
         editor.deleteLater()
         self._on_tab_changed()
-        QTimer.singleShot(0, editor.doc.sound.release)  # after the editor lets go of the file
+        # Long sounds: delete the working file once the deleted editor has let go of it.
+        QTimer.singleShot(RELEASE_DELAY_MS, editor.doc.sound.release)
 
     def closeEvent(self, ev):  # noqa: N802
         for i, editor in enumerate(self.editors()):
@@ -814,6 +817,7 @@ class MainWindow(QMainWindow):
         self.player.stop()
         for editor in self.editors():
             editor.manager.close()
+            atexit.register(editor.doc.sound.release)
         self.qsettings.setValue("window/geometry", self.saveGeometry())
         self._show_docks(True)  # save the user's dock layout, not the start page's
         self.qsettings.setValue("window/state", self.saveState())

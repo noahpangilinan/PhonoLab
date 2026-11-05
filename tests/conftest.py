@@ -1,8 +1,10 @@
+import gc
+
 import numpy as np
 import pytest
 from scipy.signal import lfilter
 
-from phonolab.core.sound import Sound
+from phonolab.core.sound import Sound, remove_stale_long_files
 
 
 def make_vowel(f0=120.0, formants=(700, 1220, 2600), duration=0.6, sr=16000) -> Sound:
@@ -23,6 +25,14 @@ def make_sine(freq=200.0, amplitude=0.5, duration=1.0, sr=16000, channels=1) -> 
     t = np.arange(int(duration * sr)) / sr
     x = amplitude * np.sin(2 * np.pi * freq * t)
     return Sound(np.column_stack([x] * channels), sr)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def clean_long_sound_files():
+    """Long-sound tests leave working files behind while their maps are open."""
+    yield
+    gc.collect()
+    remove_stale_long_files()
 
 
 @pytest.fixture

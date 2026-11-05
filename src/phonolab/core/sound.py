@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import gc
 import shutil
+import sys
 import tempfile
 import time
 from dataclasses import dataclass, field
@@ -47,10 +48,14 @@ class LongSoundError(Exception):
 
 
 def remove_stale_long_files() -> None:
-    """Delete working files left by earlier sessions (Windows can't delete a file while it's mapped)."""
+    """Delete working files left by earlier sessions.
+
+    On Windows a file in use by another running PhonoLab can't be deleted, so everything can be tried.
+    Elsewhere deleting would succeed even while in use, so only old folders are touched.
+    """
     for folder in Path(tempfile.gettempdir()).glob(_LONG_FOLDER_PREFIX + "*"):
         with contextlib.suppress(OSError):
-            if time.time() - folder.stat().st_mtime > _STALE_SECONDS:
+            if sys.platform == "win32" or time.time() - folder.stat().st_mtime > _STALE_SECONDS:
                 shutil.rmtree(folder, ignore_errors=True)
 
 
@@ -121,11 +126,15 @@ def _load_long(path: Path, progress) -> Sound:
                 block.tofile(fh)
                 frames += len(block)
                 channels = block.shape[1]
-                peak = max(peak, float(np.abs(block).max(initial=0.0)))
                 n = len(block) // ENVELOPE_BLOCK * ENVELOPE_BLOCK
-                grouped = block[:n].reshape(-1, ENVELOPE_BLOCK, channels)
-                lows.append(grouped.min(axis=1))
-                highs.append(grouped.max(axis=1))
+                # One contiguous row per channel: reducing along memory order is several times faster.
+                rows = np.ascontiguousarray(block[:n].T).reshape(channels, -1, ENVELOPE_BLOCK)
+                low, high = rows.min(axis=2).T, rows.max(axis=2).T
+                lows.append(low)
+                highs.append(high)
+                tail = block[n:]
+                peak = max(peak, float(-low.min(initial=0.0)), float(high.max(initial=0.0)))
+                peak = max(peak, float(np.abs(tail).max(initial=0.0)))
                 if progress is not None and progress(fraction) is False:
                     raise SoundLoadCancelledError
     except SoundLoadCancelledError:
@@ -302,6 +311,10 @@ class Sound:
         """Try to delete a long sound's working file. On Windows it survives until nothing maps it;
         ``remove_stale_long_files`` then clears it in a later session."""
         if self.long_folder is not None:
+            # The mapping keeps the file locked on Windows, so let go of it first. Whatever else
+            # still held a view (the closed editor's panes) has gone by now; gc breaks any cycles.
+            self.samples = np.zeros((0, self.n_channels), dtype=np.float32)
+            self.block_envelope = None
             gc.collect()
             shutil.rmtree(self.long_folder, ignore_errors=True)
 

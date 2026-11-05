@@ -230,6 +230,8 @@ class AnalysisManager(QObject):
         self.analysis_window = (max(0.0, start - margin), min(self.sound.duration, end + margin))
         if first:
             self.window_changed.emit(True)
+        # Results from the old window must not answer for this one, even while the new ones are computing.
+        self.results = {k: v for k, v in self.results.items() if k == "spectrogram"}
         for name in self.enabled - {"spectrogram"}:
             self.request(name)
 
