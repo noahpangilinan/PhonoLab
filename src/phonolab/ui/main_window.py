@@ -484,6 +484,7 @@ class MainWindow(QMainWindow):
         for editor in self.editors():
             editor.retheme()
         self.spectrum_panel.retheme()
+        self.start_page.update()
 
     def _on_system_colours_changed(self):
         if self.prefs.theme() == "system":

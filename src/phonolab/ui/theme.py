@@ -309,6 +309,13 @@ QGraphicsView {{ border: 1px solid {border}; border-radius: 4px; background: {su
 QWidget#editorPage {{ background: {window}; }}
 QLabel#appTitle {{ color: {accent}; }}
 QLabel#muted, QLabel#hint {{ color: {text_muted}; }}
-QFrame#startCard {{ background: {surface}; border: 1px solid {border}; border-radius: 12px; }}
 QLabel#sectionTitle {{ color: {text_muted}; font-weight: 600; }}
+QPushButton#startAction {{
+    background: transparent; border: none; border-radius: 6px; padding: 0; text-align: left;
+    min-height: 38px; max-height: 38px;
+}}
+QPushButton#startAction:hover {{ background: {accent_soft}; }}
+QPushButton#startAction:pressed {{ background: {highlight}; }}
+QLabel#startActionLabel {{ color: {accent_hover}; font-weight: 600; }}
+QListWidget#recentList {{ background: transparent; border: none; padding: 0; }}
 """

@@ -405,3 +405,21 @@ def test_system_theme_change_only_followed_in_system_mode(window, monkeypatch):
     window.prefs.set_theme("system")
     window._on_system_colours_changed()
     assert calls == [1]
+
+
+def test_start_page_actions_and_recent_files(window, qtbot, wav, monkeypatch):
+    from phonolab.ui.start_page import ActionRow, speech_envelope
+
+    page = window.start_page
+    assert np.array_equal(speech_envelope(), speech_envelope())  # the drawing is fixed, not random per launch
+    page.set_recent([])
+    assert page.recent.isHidden() and not page.empty_hint.isHidden()
+    page.set_recent([str(wav), str(wav.with_name("gone.wav"))])
+    assert not page.recent.isHidden() and page.empty_hint.isHidden()
+    with qtbot.waitSignal(page.open_path) as opened:
+        page.recent.itemClicked.emit(page.recent.item(0))
+    assert opened.args == [str(wav)]
+    monkeypatch.setattr("phonolab.ui.main_window.QFileDialog.getOpenFileNames", lambda *a, **k: ([], ""))
+    with qtbot.waitSignal(page.open_requested):
+        page.findChildren(ActionRow)[0].click()
+    page.grab()  # paints the delegate for both an existing and a missing file
