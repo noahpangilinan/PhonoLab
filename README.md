@@ -91,6 +91,19 @@ On each launch the exe unpacks itself to a temporary folder, so the window takes
 (about 6 s in testing); the folder is removed when PhonoLab closes. Without `make`, run
 `cd packaging && uv run pyinstaller --noconfirm --distpath ../dist --workpath ../build phonolab.spec`.
 
+### macOS (unsigned preview)
+
+macOS builds are made by GitHub Actions (`.github/workflows/mac-build.yml`) on every push, as disk images
+for Apple Silicon and Intel. Download one from the run's *Artifacts* section on the repository's Actions
+tab, open it, and drag PhonoLab to Applications. Apple Silicon needs macOS 14 or later.
+
+The app isn't signed by Apple yet, so macOS blocks it the first time. Try to open it, then go to
+*System Settings ▸ Privacy & Security* and choose **Open Anyway**. macOS asks for microphone permission
+the first time you record.
+
+On a Mac, Ctrl shortcuts in this guide use **Cmd**, and Alt means **Option**. The delete key removes a
+boundary. `make package` on a Mac builds `dist/PhonoLab.app`.
+
 ### Dependencies
 
 Everything installs from PyPI; nothing else is needed. Notable packages:
@@ -513,9 +526,9 @@ Changing these discards the current manipulation.
 | Delete / Alt+Backspace | Remove the boundary or point near the cursor |
 | Alt+Left / Alt+Right | Previous / next interval |
 | Up / Down | Previous / next tier |
-| Ctrl+F, F3 / Shift+F3 | Find labels, next / previous match |
-| F5 / F1 / F8 / F2 | Pitch / formants / intensity / duration |
-| F6 | Spectrum panel |
+| Ctrl+F, F3 / Shift+F3 (Ctrl+G / Ctrl+Shift+G) | Find labels, next / previous match |
+| F5 / F1 / F8 / F2 (Ctrl+1 / 2 / 3 / 4) | Pitch / formants / intensity / duration |
+| F6 (Ctrl+5) | Spectrum panel |
 | Ctrl+Shift+V | Voice report |
 | Ctrl+M | Show manipulation (Ctrl+click adds a pitch point) |
 | Ctrl+E | Extract the selection to a new tab |
@@ -651,7 +664,7 @@ make setup          # install, including dev tools (pytest, pytest-qt, ruff, sci
 make test           # the test suite, with Qt offscreen
 make lint           # ruff check
 make format         # ruff format
-make package        # single-file PyInstaller build: dist/PhonoLab.exe
+make package        # PyInstaller build: dist/PhonoLab.exe, or dist/PhonoLab.app on macOS
 ```
 
 About the tests:
