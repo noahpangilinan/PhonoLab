@@ -1,6 +1,6 @@
 r"""Praat's backslash codes for special symbols, e.g. ``\ae`` -> æ, ``\sw`` -> ə.
 
-Generated from Praat 6.1.38 ("TextGrid: Convert to Unicode") by trying every
+Generated from Praat 7.0.02 ("TextGrid: Convert to Unicode") by packaging/generate_ipa.py, trying every
 backslash + two-character code; tests/test_ipa.py checks it still agrees with Praat.
 """
 
@@ -10,15 +10,25 @@ import re
 
 TRIGRAPHS: dict[str, str] = {
     "\\!d": "\xa1",  # inverted exclamation mark
+    "\\''": "\u030b",  # combining double acute accent
+    "\\'-": "\u1dc7",  # combining acute-macron
     "\\'1": "\u02c8",  # modifier letter vertical line
     "\\'2": "\u02cc",  # modifier letter low vertical line
     "\\'^": "\u0301",  # combining acute accent
     "\\'p": "\u2032",  # prime
     "\\+-": "\xb1",  # plus-minus sign
     "\\+v": "\u031f",  # combining plus sign below
+    "\\-'": "\u1dc4",  # combining macron-acute
     "\\--": "\u2013",  # en dash
+    "\\-/": "\u0336",  # combining long stroke overlay
+    "\\-1": "\u02e9",  # modifier letter extra-low tone bar
+    "\\-2": "\u02e8",  # modifier letter low tone bar
+    "\\-3": "\u02e7",  # modifier letter mid tone bar
+    "\\-4": "\u02e6",  # modifier letter high tone bar
+    "\\-5": "\u02e5",  # modifier letter extra-high tone bar
     "\\->": "\u2192",  # rightwards arrow
     "\\-^": "\u0304",  # combining macron
+    "\\-`": "\u1dc6",  # combining macron-grave
     "\\-h": "\xad",  # soft hyphen
     "\\-m": "\u2212",  # minus sign
     "\\-v": "\u0320",  # combining minus sign below
@@ -26,6 +36,8 @@ TRIGRAPHS: dict[str, str] = {
     "\\.3": "\u2234",  # therefore
     "\\.c": "\xb7",  # middle dot
     "\\.f": "\u02d1",  # modifier letter half triangular colon
+    "\\.v": "\u0323",  # combining dot below
+    "\\//": "\u0338",  # combining long solidus overlay
     "\\/d": "\u2215",  # division slash
     "\\0^": "\u030a",  # combining ring above
     "\\0v": "\u0325",  # combining ring below
@@ -100,6 +112,7 @@ TRIGRAPHS: dict[str, str] = {
     "\\Ka": "\u039a",  # greek capital letter kappa
     "\\L+": "\u05dc",  # hebrew letter lamed
     "\\L/": "\u0141",  # latin capital letter l with stroke
+    "\\LI": "\u035c",  # combining double breve below
     "\\La": "\u039b",  # greek capital letter lamda
     "\\Lp": "\xa3",  # pound sign
     "\\M%": "\u05dd",  # hebrew letter final mem
@@ -109,6 +122,8 @@ TRIGRAPHS: dict[str, str] = {
     "\\N'": "\u0143",  # latin capital letter n with acute
     "\\N+": "\u05e0",  # hebrew letter nun
     "\\N<": "\u0147",  # latin capital letter n with caron
+    "\\NE": "\u2197",  # north east arrow
+    "\\NW": "\u2196",  # north west arrow
     "\\N^": "\u0306",  # combining breve
     "\\Nu": "\u039d",  # greek capital letter nu
     "\\Nv": "\u032a",  # combining bridge below
@@ -134,12 +149,16 @@ TRIGRAPHS: dict[str, str] = {
     "\\Ro": "\u03a1",  # greek capital letter rho
     "\\S'": "\u015a",  # latin capital letter s with acute
     "\\S+": "\u05e1",  # hebrew letter samekh
+    "\\S,": "\u015e",  # latin capital letter s with cedilla
     "\\S<": "\u0160",  # latin capital letter s with caron
+    "\\SE": "\u2198",  # south east arrow
     "\\SS": "\xa7",  # section sign
+    "\\SW": "\u2199",  # south west arrow
     "\\Si": "\u03a3",  # greek capital letter sigma
     "\\T(": "\u0318",  # combining left tack below
     "\\T)": "\u0319",  # combining right tack below
     "\\T+": "\u05ea",  # hebrew letter tav
+    "\\T,": "\u0162",  # latin capital letter t with cedilla
     "\\T<": "\u0164",  # latin capital letter t with caron
     "\\TM": "\u2122",  # trade mark sign
     "\\T^": "\u031d",  # combining up tack below
@@ -156,6 +175,7 @@ TRIGRAPHS: dict[str, str] = {
     "\\Up": "\u03a5",  # greek capital letter upsilon
     "\\Uv": "\u033a",  # combining inverted bridge below
     "\\V+": "\u05d5",  # hebrew letter vav
+    "\\V^": "\u2c71",  # latin small letter v with right hook
     "\\Vr": "\u221a",  # square root
     "\\W+": "\u05e9",  # hebrew letter shin
     "\\X+": "\u05d7",  # hebrew letter het
@@ -192,7 +212,9 @@ TRIGRAPHS: dict[str, str] = {
     "\\_#": "\u21d3",  # downwards double arrow
     "\\_u": "\u203f",  # undertie
     "\\_|": "\u2193",  # downwards arrow
+    "\\`-": "\u1dc5",  # combining grave-macron
     "\\`^": "\u0300",  # combining grave accent
+    "\\``": "\u030f",  # combining double grave accent
     "\\a'": "\xe1",  # latin small letter a with acute
     "\\a;": "\u0105",  # latin small letter a with ogonek
     "\\a^": "\xe2",  # latin small letter a with circumflex
@@ -231,6 +253,7 @@ TRIGRAPHS: dict[str, str] = {
     "\\d-": "\u0111",  # latin small letter d with stroke
     "\\d.": "\u0256",  # latin small letter d with tail
     "\\d<": "\u010f",  # latin small letter d with caron
+    "\\dZ": "\u02a4",  # latin small letter dezh digraph
     "\\d^": "\u0257",  # latin small letter d with hook
     "\\dd": "\u2202",  # partial differential
     "\\de": "\u03b4",  # greek small letter delta
@@ -238,6 +261,7 @@ TRIGRAPHS: dict[str, str] = {
     "\\dh": "\xf0",  # latin small letter eth
     "\\di": "\u2666",  # black diamond suit
     "\\dq": "\u05bc",  # hebrew point dagesh or mapiq
+    "\\dz": "\u02a3",  # latin small letter dz digraph
     "\\e'": "\xe9",  # latin small letter e with acute
     "\\e-": "\u0258",  # latin small letter reversed e
     "\\e;": "\u0119",  # latin small letter e with ogonek
@@ -258,6 +282,7 @@ TRIGRAPHS: dict[str, str] = {
     "\\ff": "\u0278",  # latin small letter phi
     "\\fh": "\u027e",  # latin small letter r with fishhook
     "\\fi": "\u03c6",  # greek small letter phi
+    "\\fr": "\u1dc9",  # combining acute-grave-acute
     "\\g<": "\u01e7",  # latin small letter g with caron
     "\\g^": "\u0260",  # latin small letter g with hook
     "\\ga": "\u03b3",  # greek small letter gamma
@@ -300,6 +325,7 @@ TRIGRAPHS: dict[str, str] = {
     "\\ml": "\u0270",  # latin small letter turned m with long leg
     "\\mt": "\u026f",  # latin small letter turned m
     "\\mu": "\u03bc",  # greek small letter mu
+    "\\mv": "\u033c",  # combining seagull below
     "\\n'": "\u0144",  # latin small letter n with acute
     "\\n.": "\u0273",  # latin small letter n with retroflex hook
     "\\n<": "\u0148",  # latin small letter n with caron
@@ -338,12 +364,14 @@ TRIGRAPHS: dict[str, str] = {
     "\\r<": "\u0159",  # latin small letter r with caron
     "\\rc": "\u0280",  # latin letter small capital r
     "\\re": "\xae",  # registered sign
+    "\\rf": "\u1dc8",  # combining grave-acute-grave
     "\\rh": "\u0264",  # latin small letter rams horn
     "\\ri": "\u0281",  # latin letter small capital inverted r
     "\\rl": "\u027a",  # latin small letter turned r with long leg
     "\\ro": "\u03c1",  # greek small letter rho
     "\\rt": "\u0279",  # latin small letter turned r
     "\\s'": "\u015b",  # latin small letter s with acute
+    "\\s,": "\u015f",  # latin small letter s with cedilla
     "\\s.": "\u0282",  # latin small letter s with hook
     "\\s2": "\u03c2",  # greek small letter final sigma
     "\\s<": "\u0161",  # latin small letter s with caron
@@ -356,6 +384,7 @@ TRIGRAPHS: dict[str, str] = {
     "\\ss": "\xdf",  # latin small letter sharp s
     "\\su": "\u2211",  # n-ary summation
     "\\sw": "\u0259",  # latin small letter schwa
+    "\\t,": "\u0163",  # latin small letter t with cedilla
     "\\t.": "\u0288",  # latin small letter t with retroflex hook
     "\\t2": "\u03d1",  # greek theta symbol
     "\\t<": "\u0165",  # latin small letter t with caron
@@ -378,7 +407,10 @@ TRIGRAPHS: dict[str, str] = {
     "\\v^": "\u030c",  # combining caron
     "\\vs": "\u028b",  # latin small letter v with hook
     "\\vt": "\u028c",  # latin small letter turned v
+    "\\vv": "\u032c",  # combining caron below
     "\\wt": "\u028d",  # latin small letter turned w
+    "\\wv": "\u032b",  # combining inverted double arch below
+    "\\x^": "\u033d",  # combining x above
     "\\xi": "\u03be",  # greek small letter xi
     "\\xx": "\xd7",  # multiplication sign
     "\\y'": "\xfd",  # latin small letter y with acute
@@ -394,8 +426,11 @@ TRIGRAPHS: dict[str, str] = {
     "\\|-": "\u01c2",  # latin letter alveolar click
     "\\|1": "\u01c0",  # latin letter dental click
     "\\|2": "\u01c1",  # latin letter lateral click
+    "\\|d": "\ua71c",  # modifier letter raised down arrow
+    "\\|u": "\ua71b",  # modifier letter raised up arrow
     "\\|v": "\u0329",  # combining vertical line below
     "\\||": "\xb6",  # pilcrow sign
+    "\\~/": "\u0334",  # combining tilde overlay
     "\\~<": "\u0334",  # combining tilde overlay
     "\\~^": "\u0303",  # combining tilde
     "\\~v": "\u0330",  # combining tilde below
