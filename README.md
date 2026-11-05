@@ -4,8 +4,9 @@
 
 PhonoLab is a desktop application for phoneticians, speech scientists, linguists and clinicians. It runs
 [Praat](https://www.fon.hum.uva.nl/praat/)'s own analysis code through
-[Parselmouth](https://parselmouth.readthedocs.io), so pitch, formant, intensity, voice and spectral
-measurements are the same numbers Praat produces. It wraps them in an editor built around everyday work:
+[Parselmouth](https://parselmouth.readthedocs.io) (currently Praat 6.1.38), so pitch, formant, intensity,
+voice and spectral measurements come from Praat's own algorithms. It wraps them in an editor built around
+everyday work:
 tabs, drag and drop, one undo history, live readouts, background analysis, IPA input, search, batch
 processing and publication figures.
 
@@ -567,7 +568,7 @@ in the label field always types; it never triggers shortcuts.
 
 ## How results relate to Praat
 
-- **The same algorithms.** Every analysis is a Praat command run by Parselmouth (pitch, formants,
+- **The same algorithms, as of Praat 6.1.38.** Every analysis is a Praat command run by Parselmouth (pitch, formants,
   intensity, spectrogram, voice report, LTAS, spectral moments, CPPS, PSOLA, Klatt, filters, resampling).
   PhonoLab adds no measurement code of its own beyond simple statistics over Praat's frames: means,
   medians, extremes, slopes, and the energy-averaged intensity mean.
@@ -579,7 +580,8 @@ in the label field always types; it never triggers shortcuts.
 - **Voice reports** are computed on the selection plus a margin of 3 ÷ pitch floor on each side, so the
   pitch analysis has context at the edges.
 - **Spectral slices** use a Hanning window over the selection.
-- **Bundled Praat version: 6.1.38.** Commands added to Praat after that version aren't available.
+- **Bundled Praat version: 6.1.38 (January 2021).** Commands added since aren't available, and later fixes
+  to Praat's algorithms aren't included, so some numbers can differ slightly from current Praat (now 7.0).
 
 ---
 
@@ -695,7 +697,8 @@ Code style is ruff with a 120-character line length. Commit messages are short s
 
 ## Not yet covered
 
-- Pitch methods newer than the bundled Praat 6.1.38 (e.g. filtered autocorrelation).
+- Everything added to Praat since 6.1.38, including filtered pitch methods, FormantPath, H1–H2 in the voice
+  report, and speech recognition.
 - Articulatory synthesis.
 - Praat's statistics and learning tools (Table, PCA, discriminant analysis, OT grammars) and listening
   experiments (ExperimentMFC).
