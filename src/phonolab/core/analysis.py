@@ -113,6 +113,13 @@ class PitchMethod(Enum):
     AUTOCORRELATION = "autocorrelation"
     CROSS_CORRELATION = "cross-correlation"
     SUBHARMONIC_SUMMATION = "subharmonic summation (SHS)"
+    # Praat 7 only. Praat prefers filtered autocorrelation for intonation (see how_to_choose in its manual).
+    FILTERED_AUTOCORRELATION = "filtered autocorrelation"
+    FILTERED_CROSS_CORRELATION = "filtered cross-correlation"
+
+    @property
+    def is_filtered(self) -> bool:
+        return self in (PitchMethod.FILTERED_AUTOCORRELATION, PitchMethod.FILTERED_CROSS_CORRELATION)
 
 
 @dataclass(frozen=True)
@@ -138,6 +145,8 @@ class PitchResult:
 
 def praat_pitch(snd: parselmouth.Sound, s: PitchSettings) -> parselmouth.Pitch:
     """A Praat Pitch object for ``snd`` with these settings."""
+    if s.method.is_filtered:
+        raise ValueError(f"{s.method.value.capitalize()} needs the bundled Praat 7 program")
     if s.method is PitchMethod.SUBHARMONIC_SUMMATION:
         # Praat's defaults for the SHS-specific parameters (Hermes 1988).
         max_frequency_component, max_subharmonics, compression, points_per_octave = 1250.0, 15, 0.84, 48
@@ -163,9 +172,18 @@ def pitch_command(s: PitchSettings) -> str:
     """The Praat script line that makes a Pitch from the selected Sound."""
     if s.method is PitchMethod.SUBHARMONIC_SUMMATION:
         return f"To Pitch (shs): 0.01, {s.floor}, {s.max_candidates}, 1250, 15, 0.84, {s.ceiling}, 48"
+    accurate = praat_engine.praat_bool(s.very_accurate)
+    if s.method.is_filtered:
+        # Filtered methods have their own standard thresholds, unlike the raw values in these settings:
+        # attenuation at ceiling 0.03, silence 0.09, voicing 0.50, octave cost 0.055.
+        kind = "autocorrelation" if s.method is PitchMethod.FILTERED_AUTOCORRELATION else "cross-correlation"
+        return (
+            f"To Pitch (filtered {kind}): 0, {s.floor}, {s.ceiling}, {s.max_candidates}, {accurate}, "
+            f"0.03, 0.09, 0.50, 0.055, {s.octave_jump_cost}, {s.voiced_unvoiced_cost}"
+        )
     kind = "ac" if s.method is PitchMethod.AUTOCORRELATION else "cc"
     return (
-        f"To Pitch ({kind}): 0, {s.floor}, {s.max_candidates}, {praat_engine.praat_bool(s.very_accurate)}, "
+        f"To Pitch ({kind}): 0, {s.floor}, {s.max_candidates}, {accurate}, "
         f"{s.silence_threshold}, {s.voicing_threshold}, {s.octave_cost}, {s.octave_jump_cost}, "
         f"{s.voiced_unvoiced_cost}, {s.ceiling}"
     )

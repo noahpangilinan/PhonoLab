@@ -64,7 +64,7 @@ def both_engines(monkeypatch, fn):
 
 
 @needs_praat
-@pytest.mark.parametrize("method", list(PitchMethod))
+@pytest.mark.parametrize("method", [m for m in PitchMethod if not m.is_filtered])
 def test_pitch_agrees_across_engines(vowel, monkeypatch, method):
     s = PitchSettings(method=method)
     new, old = both_engines(monkeypatch, lambda: analysis.compute_pitch(vowel, s))
@@ -132,3 +132,24 @@ def test_engine_self_check_and_praat_7_scripts(vowel, capsys):
         vowel, None, 'To Pitch (filtered ac): 0, 50, 800, 15, "no", 0.03, 0.09, 0.5, 0.055, 0.35, 0.14\n'
     )
     assert r.error is None
+
+
+@needs_praat
+@pytest.mark.parametrize("method", [m for m in PitchMethod if m.is_filtered])
+def test_filtered_pitch_measures_f0(vowel, method):
+    r = analysis.compute_pitch(vowel, PitchSettings(method=method, floor=50, ceiling=800))
+    assert np.nanmedian(r.frequencies) == pytest.approx(120, abs=2)
+
+
+def test_filtered_pitch_needs_praat_7(vowel, monkeypatch):
+    monkeypatch.setenv("PHONOLAB_PRAAT", "none")
+    with pytest.raises(ValueError, match="needs the bundled Praat 7"):
+        analysis.compute_pitch(vowel, PitchSettings(method=PitchMethod.FILTERED_AUTOCORRELATION))
+
+
+def test_voice_analysis_uses_raw_cross_correlation_with_filtered_pitch(vowel, monkeypatch):
+    filtered = PitchSettings(method=PitchMethod.FILTERED_AUTOCORRELATION)
+    assert voice.for_voice_analysis(filtered).method is PitchMethod.CROSS_CORRELATION
+    assert voice.for_voice_analysis(PitchSettings()).method is PitchMethod.AUTOCORRELATION
+    monkeypatch.setenv("PHONOLAB_PRAAT", "none")  # voice measures still work without Praat 7
+    assert len(voice.compute_pulses(vowel, voice.VoiceSettings(), filtered).times) > 50

@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import re
 import shutil
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 from parselmouth.praat import call
 
 from phonolab.core import praat_engine
-from phonolab.core.analysis import PitchSettings, pitch_command, praat_pitch, setting
+from phonolab.core.analysis import PitchMethod, PitchSettings, pitch_command, praat_pitch, setting
 from phonolab.core.sound import Sound
 from phonolab.core.textgrid import TextGrid
 
@@ -32,8 +32,14 @@ class PulsesResult:
     times: np.ndarray
 
 
+def for_voice_analysis(pitch: PitchSettings) -> PitchSettings:
+    """Praat advises raw cross-correlation for voice analysis, so filtered methods give way to it here."""
+    return replace(pitch, method=PitchMethod.CROSS_CORRELATION) if pitch.method.is_filtered else pitch
+
+
 def compute_pulses(sound: Sound, _settings: VoiceSettings, pitch: PitchSettings) -> PulsesResult:
     """Glottal pulse times, as Praat's "To PointProcess (cc)" finds them."""
+    pitch = for_voice_analysis(pitch)
     if praat_engine.available():
         body = f"""{_PULSES}
 if do("Get number of points") > 0
@@ -77,6 +83,7 @@ class VoicingResult:
 
 def compute_voicing(sound: Sound, s: VoicingSettings, pitch: PitchSettings) -> VoicingResult:
     """Voiced/unvoiced decision from glottal pulses, as Praat's "PointProcess: To TextGrid (vuv)"."""
+    pitch = for_voice_analysis(pitch)
     if praat_engine.available():
         pulses = _PULSES.replace("PITCH", pitch_command(pitch))
         save = 'Save as text file: folder$ + "/voicing.TextGrid"'
@@ -132,6 +139,7 @@ def parse_report(text: str) -> dict[str, list[tuple[str, str]]]:
 def voice_report(sound: Sound, pitch: PitchSettings, voice: VoiceSettings, start: float, end: float) -> VoiceReport:
     """Praat's "Voice report" for [start, end], analysed with a margin like Praat's editor does."""
     start, end = sorted((start, end))
+    pitch = for_voice_analysis(pitch)
     margin = 3.0 / pitch.floor  # enough context for the pitch analysis at the edges
     from_time, to_time = max(0.0, start - margin), min(sound.duration, end + margin)
     if praat_engine.available():

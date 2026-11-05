@@ -48,7 +48,7 @@ TextGrids are read and written in Praat's own formats, so you can move between P
 | **Speed** | Analyses run in background processes, so the window never freezes. The waveform is drawn at screen resolution, and the spectrogram is recomputed for what you're looking at. Five-minute recordings stay smooth. |
 | **Annotation** | Interval and point tiers, boundary editing by keyboard or mouse, type-to-label, IPA chart, Praat backslash codes shown as IPA, search, undo/redo |
 | **Measurement** | Live readout under the mouse, selection statistics, pitch/formant/intensity queries, voice report (jitter, shimmer, HNR), spectral slice, LTAS, spectral moments, CPPS |
-| **Methods** | Pitch by autocorrelation, cross-correlation or subharmonic summation; formants by Burg or robust LPC |
+| **Methods** | Pitch by filtered or raw autocorrelation and cross-correlation, or subharmonic summation; formants by Burg or robust LPC |
 | **Manipulation** | Editable pitch contour and duration factors with PSOLA resynthesis |
 | **Sound operations** | Record, generate tones and noise, Klatt vowel synthesis, extract, resample, filter, scale, reverse, mono, concatenate |
 | **Automation** | Folder-wide batch measurement to CSV (whole files or per labelled interval), and a script window for Praat scripts or Python |
@@ -207,7 +207,7 @@ PhonoLab warns when a TextGrid's duration differs from its sound.
 ### IPA
 
 - Praat's **backslash codes** display as symbols: `\ae` shows as æ, `\sw` as ə, `\ng` as ŋ, `\:f` as ː, and so on.
-  The text you typed is stored unchanged, so files stay compatible with Praat. All 391 of Praat's symbol
+  The text you typed is stored unchanged, so files stay compatible with Praat. All 426 of Praat's symbol
   codes are supported. The table was generated from Praat itself, and a test checks it against Praat.
 - The **IPA** button next to the label field opens a chart of vowels, consonants, suprasegmentals and
   diacritics. Hover a symbol to see its Unicode code point and Praat code; click to insert it.
@@ -450,9 +450,10 @@ and has **Restore Defaults**, which returns it to the values below (Praat's, unl
 | Setting | Default |
 | --- | --- |
 | Floor / ceiling | 75 / 500 Hz |
-| Method | Autocorrelation, cross-correlation, or SHS |
+| Method | Autocorrelation, cross-correlation, SHS, or filtered autocorrelation/cross-correlation (Praat 7) |
 | Maximum candidates | 15 |
 | Very accurate | Off |
+| Filtered methods | Use Praat's own thresholds (silence 0.09, voicing 0.50, octave cost 0.055). Praat suggests a range of 50–800 Hz with them. Pulses and the voice report use raw cross-correlation instead, as Praat advises for voice analysis. |
 | Silence / voicing thresholds | 0.03 / 0.45 |
 | Octave / octave-jump / voiced-unvoiced costs | 0.01 / 0.35 / 0.14 |
 
