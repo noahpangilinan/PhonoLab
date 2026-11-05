@@ -92,10 +92,14 @@ class OverviewStrip(pg.PlotWidget):
         plot.getAxis("right").setWidth(RIGHT_AXIS_WIDTH)
         plot.getAxis("bottom").setStyle(showValues=False)
         plot.getAxis("bottom").setHeight(2)
-        mono = sound.mono
-        x, y = Envelope(mono, sound.sampling_rate).render(0, sound.duration, 1500)
+        if sound.is_long:
+            lows, highs = sound.block_envelope
+            envelope = Envelope(sound.samples[:, 0], sound.sampling_rate, (lows.min(axis=1), highs.max(axis=1)))
+        else:
+            envelope = Envelope(sound.mono, sound.sampling_rate)
+        x, y = envelope.render(0, sound.duration, 1500)
         self.curve = plot.plot(x, y, pen=pg.mkPen(COLORS["muted"]))
-        peak = float(np.max(np.abs(mono))) or 1.0
+        peak = sound.peak or 1.0
         plot.getViewBox().setRange(xRange=(0, sound.duration), yRange=(-peak, peak), padding=0)
         self.window_box = pg.LinearRegionItem(
             movable=False, brush=self._window_brush(), pen=pg.mkPen(COLORS["playhead"])

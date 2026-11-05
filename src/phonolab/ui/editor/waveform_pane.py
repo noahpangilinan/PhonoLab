@@ -5,20 +5,23 @@ from __future__ import annotations
 import numpy as np
 import pyqtgraph as pg
 
-from phonolab.core.sound import Sound
+from phonolab.core.sound import ENVELOPE_BLOCK, Sound
 from phonolab.ui.editor.base_pane import TimePane
 from phonolab.ui.theme import COLORS
 
-ENVELOPE_BLOCK = 256  # samples per block in the precomputed envelope
 MAX_VISIBLE_PULSES = 3000  # beyond this the marks merge into a solid block anyway
 
 
 class Envelope:
     """Min/max envelope of a signal with a precomputed coarse level for long views."""
 
-    def __init__(self, signal: np.ndarray, sr: float):
+    def __init__(self, signal: np.ndarray, sr: float, blocks: tuple[np.ndarray, np.ndarray] | None = None):
+        """``blocks`` gives a coarse level computed elsewhere, as long sounds get while loading."""
         self.signal = signal
         self.sr = sr
+        if blocks is not None:
+            self.block_min, self.block_max = blocks
+            return
         n = len(signal) // ENVELOPE_BLOCK * ENVELOPE_BLOCK
         blocks = signal[:n].reshape(-1, ENVELOPE_BLOCK)
         self.block_min = blocks.min(axis=1) if n else np.zeros(0)
@@ -61,12 +64,16 @@ class Envelope:
 class WaveformPane(TimePane):
     def __init__(self, axis, sound: Sound, parent=None):
         self.sound = sound
-        self.envelopes = [Envelope(sound.samples[:, c], sound.sampling_rate) for c in range(sound.n_channels)]
+        coarse = sound.block_envelope
+        self.envelopes = [
+            Envelope(sound.samples[:, c], sound.sampling_rate, (coarse[0][:, c], coarse[1][:, c]) if coarse else None)
+            for c in range(sound.n_channels)
+        ]
         self.curves = []
         super().__init__(axis, parent)
         self.setMinimumHeight(70)
         n = sound.n_channels
-        self.peak = float(np.max(np.abs(sound.samples))) or 1.0
+        self.peak = sound.peak or 1.0
         spacing = 2 * self.peak  # channels stacked top to bottom
         pen = pg.mkPen(COLORS["waveform"], width=1)
         for c in range(n):
