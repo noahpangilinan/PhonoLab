@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 
 import parselmouth
-from PyQt6.QtCore import QSettings, Qt
+from PyQt6.QtCore import QSettings, Qt, QTimer
 from PyQt6.QtGui import QAction, QActionGroup, QKeySequence, QUndoGroup
 from PyQt6.QtWidgets import (
     QApplication,
@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QMainWindow,
     QMessageBox,
+    QProgressDialog,
     QStackedWidget,
     QTabWidget,
 )
@@ -26,7 +27,13 @@ from phonolab.core.batch import BatchOptions
 from phonolab.core.figures import FigureSettings
 from phonolab.core.registry import ANALYSES
 from phonolab.core.settings import Preferences
-from phonolab.core.sound import SUPPORTED_EXTENSIONS, Sound, SoundLoadError
+from phonolab.core.sound import (
+    SUPPORTED_EXTENSIONS,
+    LongSoundError,
+    Sound,
+    SoundLoadCancelledError,
+    SoundLoadError,
+)
 from phonolab.core.spectrum import SpectrumSettings
 from phonolab.core.textgrid import TextGrid, TextGridError
 from phonolab.ui.dialogs.batch_dialog import BatchDialog
@@ -35,7 +42,7 @@ from phonolab.ui.dialogs.new_textgrid import NewTextGridDialog
 from phonolab.ui.dialogs.record_dialog import RecordDialog
 from phonolab.ui.dialogs.settings_dialog import SettingsDialog
 from phonolab.ui.document import Document
-from phonolab.ui.editor.sound_editor import HIDDEN_BY_DEFAULT, LAYERS, SoundEditor
+from phonolab.ui.editor.sound_editor import EXTRACT_FIRST, HIDDEN_BY_DEFAULT, LAYERS, SoundEditor
 from phonolab.ui.info_panel import InfoPanel
 from phonolab.ui.log_panel import LogPanel
 from phonolab.ui.script_window import ScriptWindow
@@ -90,6 +97,27 @@ SHORTCUTS = [
         ],
     ),
 ]
+
+
+class _LoadProgress:
+    """Progress dialog for long files, which report as they stream. Short files never call it."""
+
+    def __init__(self, name: str, parent):
+        self.name, self.parent, self.dialog = name, parent, None
+
+    def __call__(self, fraction: float) -> bool:
+        if self.dialog is None:
+            self.dialog = QProgressDialog(f"Opening {self.name}…", "Cancel", 0, 1000, self.parent)
+            self.dialog.setWindowTitle("Long recording")
+            self.dialog.setWindowModality(Qt.WindowModality.WindowModal)
+            self.dialog.setMinimumDuration(0)
+        self.dialog.setValue(int(fraction * 1000))
+        QApplication.processEvents()
+        return not self.dialog.wasCanceled()
+
+    def close(self):
+        if self.dialog is not None:
+            self.dialog.close()
 
 
 class MainWindow(QMainWindow):
@@ -516,11 +544,15 @@ class MainWindow(QMainWindow):
                 self.tabs.setCurrentIndex(i)
                 return
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        progress = _LoadProgress(path.name, self)
         try:
-            sound = Sound.from_file(path)
+            sound = Sound.from_file(path, progress)
+        except SoundLoadCancelledError:
+            return
         except SoundLoadError as err:
             sound, error = None, err
         finally:
+            progress.close()
             QApplication.restoreOverrideCursor()
         if sound is None:
             QMessageBox.warning(self, "Could not open sound", str(error))
@@ -603,6 +635,9 @@ class MainWindow(QMainWindow):
     def _derive(self, fn, settings_cls=None):
         """Run a sound operation on the current sound and open the result in a new tab."""
         editor = self.editor
+        if editor.doc.sound.is_long and fn is not sound_ops.extract:
+            self.show_message(EXTRACT_FIRST)
+            return
         args = ()
         if settings_cls is not None:
             key = f"op_{settings_cls.__name__}"
@@ -629,9 +664,15 @@ class MainWindow(QMainWindow):
         if not sel:
             self.show_message("Select a part of the sound first")
             return
-        self.open_new_sound(sound_ops.extract(self.editor.doc.sound, *sel))
+        try:
+            self.open_new_sound(sound_ops.extract(self.editor.doc.sound, *sel))
+        except LongSoundError as err:
+            self.show_message(str(err))
 
     def concatenate_sounds(self):
+        if any(ed.doc.sound.is_long for ed in self.editors()):
+            self.show_message(EXTRACT_FIRST)
+            return
         try:
             sound = sound_ops.concatenate([ed.doc.sound for ed in self.editors()])
         except ValueError as err:
@@ -762,6 +803,7 @@ class MainWindow(QMainWindow):
         self.tabs.removeTab(index)
         editor.deleteLater()
         self._on_tab_changed()
+        QTimer.singleShot(0, editor.doc.sound.release)  # after the editor lets go of the file
 
     def closeEvent(self, ev):  # noqa: N802
         for i, editor in enumerate(self.editors()):

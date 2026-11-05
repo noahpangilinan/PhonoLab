@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import QApplication, QMessageBox
 from phonolab import __version__
 from phonolab.core import praat_engine
 from phonolab.core.settings import Preferences
+from phonolab.core.sound import remove_stale_long_files
 from phonolab.ui.icon import app_icon
 from phonolab.ui.theme import apply_theme
 
@@ -90,6 +91,7 @@ def engine_info() -> int:
 def run(argv: list[str] | None = None) -> int:
     argv = sys.argv if argv is None else argv
     log_file = setup_logging()
+    remove_stale_long_files()
     if "--engine-info" in argv:
         return engine_info()
     _install_excepthook(log_file)

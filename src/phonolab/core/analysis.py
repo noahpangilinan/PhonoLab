@@ -7,7 +7,7 @@ tests never need to touch parselmouth objects directly.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field, fields, replace
 from enum import Enum
 
 import numpy as np
@@ -16,6 +16,14 @@ from parselmouth.praat import call
 
 from phonolab.core import praat_engine
 from phonolab.core.sound import Sound
+
+_TIME_FIELDS = ("times", "starts", "ends")  # result fields holding times in seconds
+
+
+def shift_times(result, offset: float):
+    """A result computed on a stretch of a sound, moved to that stretch's place in the whole sound."""
+    moved = {f.name: getattr(result, f.name) + offset for f in fields(result) if f.name in _TIME_FIELDS}
+    return replace(result, **moved)
 
 
 def setting(default, label: str, unit: str = "", minimum=None, maximum=None, **extra):
@@ -78,6 +86,8 @@ def compute_spectrogram(
     sound: Sound, s: SpectrogramSettings, start: float = 0.0, end: float | None = None
 ) -> SpectrogramResult:
     """Spectrogram of ``[start, end]`` at roughly ``s.time_steps`` frames."""
+    if sound.is_long:
+        return shift_times(compute_spectrogram(sound.extract(start, end or sound.duration), s), start)
     end = sound.duration if end is None else min(end, sound.duration)
     start = max(0.0, start)
     # Pad by one window so frames reach the edges of the requested range.

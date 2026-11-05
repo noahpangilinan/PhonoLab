@@ -142,6 +142,8 @@ def voice_report(sound: Sound, pitch: PitchSettings, voice: VoiceSettings, start
     pitch = for_voice_analysis(pitch)
     margin = 3.0 / pitch.floor  # enough context for the pitch analysis at the edges
     from_time, to_time = max(0.0, start - margin), min(sound.duration, end + margin)
+    if sound.is_long:
+        return voice_report(sound.extract(from_time, to_time), pitch, voice, start - from_time, end - from_time)
     if praat_engine.available():
         arguments = (
             f"{start}, {end}, {pitch.floor}, {pitch.ceiling}, {voice.max_period_factor}, "

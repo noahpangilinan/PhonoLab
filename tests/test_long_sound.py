@@ -94,3 +94,49 @@ def test_not_enough_disk_space_is_reported(wav, long_threshold, monkeypatch):
     monkeypatch.setattr(sound_module.shutil, "disk_usage", lambda _: usage._replace(free=10))
     with pytest.raises(sound_module.SoundLoadError, match="free disk space"):
         Sound.from_file(wav)
+
+
+def test_shift_times_moves_every_time_field():
+    from phonolab.core.analysis import PitchResult, shift_times
+    from phonolab.core.voice import VoicingResult
+
+    assert shift_times(PitchResult(np.array([1.0]), np.array([100.0])), 10).times[0] == 11
+    moved = shift_times(VoicingResult(np.array([1.0]), np.array([2.0])), 10)
+    assert (moved.starts[0], moved.ends[0]) == (11, 12)
+
+
+def test_analyses_work_on_stretches_of_a_long_sound(long_threshold, tmp_path):
+    from phonolab.core import queries, spectrum, voice
+    from phonolab.core.analysis import FormantSettings, PitchSettings, SpectrogramSettings, compute_spectrogram
+    from tests.conftest import make_vowel
+
+    path = tmp_path / "v.wav"
+    make_vowel(f0=120, duration=2.0).save(path)
+    long = Sound.from_file(path)
+    report = voice.voice_report(long, PitchSettings(), voice.VoiceSettings(), 0.5, 1.5)
+    assert float(report.value("Median pitch").split()[0]) == pytest.approx(120, abs=2)
+    assert spectrum.cpps(long, 0.2, 1.8) > 5
+    r = spectrum.compute_slice(long, spectrum.SpectrumSettings(), 0.5, 0.6)
+    assert (r.start, r.end) == (0.5, 0.6)
+    assert compute_spectrogram(long, SpectrogramSettings(), 1.0, 1.5).times[0] >= 1.0
+    assert len(queries.formant_bandwidths_at(long, FormantSettings(), 1.0)) == 5
+
+
+def test_batch_measures_long_files_in_chunks(long_threshold, tmp_path, monkeypatch):
+    from phonolab.core import batch
+    from phonolab.core.batch import BatchOptions
+    from phonolab.core.textgrid import TextGrid
+    from tests.conftest import make_vowel
+
+    monkeypatch.setattr(batch, "MAX_PART_SECONDS", 0.5)  # four chunks
+    path = tmp_path / "v.wav"
+    make_vowel(f0=120, duration=2.0).save(path)
+    (row,) = batch.measure_file(path, BatchOptions())
+    assert row["f0_median_hz"] == pytest.approx(120, abs=2) and row["F1_mean_hz"] > 300
+    assert "skipped" in row["error"]
+    grid = TextGrid.for_duration(2.0, ["words"])
+    grid.tiers[0].add_boundary(1.0)
+    grid.tiers[0].set_text(1, "hi")
+    grid.write(path.with_suffix(".TextGrid"))
+    (row,) = batch.measure_file(path, BatchOptions(measures=frozenset({"pitch"}), tier="words"))
+    assert row["start_s"] == 1.0 and row["f0_median_hz"] == pytest.approx(120, abs=2) and "error" not in row

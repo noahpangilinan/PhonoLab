@@ -105,7 +105,7 @@ class InfoPanel(QDockWidget):
         if sel:
             a, b = sel
             values = {"Start": f"{a:.4f} s", "End": f"{b:.4f} s", "Duration": f"{b - a:.4f} s"}
-            res = e.manager.results
+            res = e.manager.results if e.manager.covers(a, b) else {}  # no partial statistics
             if "voicing" in res:
                 values["Voiced"] = f"{100 * res['voicing'].voiced_fraction(a, b):.0f} %"
             if "pitch" in res:

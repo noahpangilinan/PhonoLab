@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import functools
 from pathlib import Path
 
 import numpy as np
@@ -26,7 +27,7 @@ from phonolab.core import manipulation, queries, registry, voice
 from phonolab.core.manipulation import ManipulationSettings
 from phonolab.core.queries import fmt
 from phonolab.core.settings import Preferences
-from phonolab.core.sound import Sound
+from phonolab.core.sound import LongSoundError, Sound
 from phonolab.core.textgrid import IntervalTier, TextGrid, TextGridError
 from phonolab.ui.document import Document
 from phonolab.ui.editor.base_pane import LEFT_AXIS_WIDTH, RIGHT_AXIS_WIDTH
@@ -40,14 +41,29 @@ from phonolab.ui.editor.waveform_pane import Envelope, WaveformPane
 from phonolab.ui.ipa_palette import IpaPalette
 from phonolab.ui.manipulation import ManipulationState
 from phonolab.ui.theme import COLORS, style_plot
-from phonolab.ui.workers import AnalysisManager
+from phonolab.ui.workers import ZOOM_HINT, AnalysisManager
 
 PLAYHEAD_INTERVAL_MS = 16
+EXTRACT_FIRST = "Long recordings can't do this as a whole: select a part and use Sound > Extract selection"
 LAYERS = ("waveform", "spectrogram", "pitch", "formants", "intensity", "voicing", "pulses", "manipulation")
 # Layers hidden until the user turns them on (like Praat, which hides pulses by default).
 HIDDEN_BY_DEFAULT = {"pulses", "manipulation"}
 # Layers whose visibility lives in preferences rather than in the spectrogram pane.
 STANDALONE_LAYERS = ("waveform", "voicing", "pulses", "manipulation")
+
+
+def _reports_long_sound_limits(method):
+    """Turn a long sound's limits into a status-bar message, for commands run straight from a menu."""
+
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        try:
+            return method(self, *args, **kwargs)
+        except LongSoundError as e:
+            self.message.emit(str(e))
+            return None
+
+    return wrapper
 
 
 class _OverviewBox(pg.ViewBox):
@@ -142,6 +158,7 @@ class SoundEditor(QWidget):
         self.overview = OverviewStrip(self.axis, sound)
         self.waveform = WaveformPane(self.axis, sound)
         self.manager.result_ready.connect(self._on_result)
+        self.manager.window_changed.connect(self._on_window_changed)
         self.spectrogram = SpectrogramPane(self.axis, self.manager)
         self.manipulation_pane = ManipulationPane(self.axis)
         self.manipulation_pane.message.connect(self.message)
@@ -216,6 +233,8 @@ class SoundEditor(QWidget):
             self.set_layer_visible(name, prefs.pane_visible(name, name not in HIDDEN_BY_DEFAULT))
         self._on_textgrid_changed()
         self._sync_scrollbar(*self.axis.view)
+        if not self.manager.analyses_available:
+            self._on_window_changed(False)
 
     # ------------------------------------------------------------------ layout helpers
 
@@ -259,6 +278,16 @@ class SoundEditor(QWidget):
             any_layer = any(self.spectrogram.visible[n] for n in SpectrogramPane.LAYERS)
             self.spectrogram.setVisible(any_layer)
 
+    def _on_window_changed(self, available: bool):
+        """Long sounds: the panes outside the spectrogram follow the analysis window too."""
+        if available:
+            self.voicing_bar.hint = "analysing…"
+        else:
+            self.voicing_bar.hint = "zoom in to see voicing"
+            self.voicing_bar.set_result(None)
+            self.waveform.set_pulses(None)
+        self.voicing_bar.update()
+
     def _on_result(self, name: str):
         if name == "pulses":
             self.waveform.set_pulses(self.manager.results["pulses"].times)
@@ -288,6 +317,9 @@ class SoundEditor(QWidget):
     def add_voicing_tier(self):
         """Add a "voicing" interval tier with Praat-style V/U labels (one undoable step)."""
         doc = self.doc
+        if doc.sound.is_long:
+            self.message.emit(EXTRACT_FIRST)
+            return
         if doc.textgrid is None:
             doc.set_textgrid(TextGrid.for_duration(doc.sound.duration, ()), saved=False)
         r = self.result("voicing")
@@ -308,6 +340,9 @@ class SoundEditor(QWidget):
 
     def ensure_manipulation(self) -> bool:
         """Show the manipulation, starting its pitch analysis if needed. True if it is ready."""
+        if self.doc.sound.is_long:
+            self.manipulation_pane.set_status(EXTRACT_FIRST)
+            return False
         if self.doc.manipulation is not None:
             self.manipulation_pane.set_state(self.doc.manipulation)
             return True
@@ -344,6 +379,9 @@ class SoundEditor(QWidget):
     def _with_resynthesis(self, action):
         """Call ``action(samples, sr)`` with the resynthesis of the current tiers (computing it if stale)."""
         state = self.doc.manipulation
+        if self.doc.sound.is_long:
+            self.message.emit(EXTRACT_FIRST)
+            return
         if state is None:
             self.message.emit("Show the manipulation first (View ▸ Show manipulation)")
             return
@@ -382,6 +420,9 @@ class SoundEditor(QWidget):
         return self.axis.selection or (0.0, self.doc.sound.duration)
 
     def _require_manipulation(self) -> ManipulationState | None:
+        if self.doc.sound.is_long:
+            self.message.emit(EXTRACT_FIRST)
+            return None
         if self.doc.manipulation is None:
             self.set_layer_visible("manipulation", True)
             self.message.emit("Analysing pitch for manipulation; try again in a moment")
@@ -526,13 +567,22 @@ class SoundEditor(QWidget):
             return self.manager.compute_now(name)
         return self.manager.results[name]
 
+    def _check_coverage(self):
+        """Long sounds: refuse rather than report statistics over part of what was asked for."""
+        start, end = self.axis.selection or (self.axis.cursor, self.axis.cursor)
+        if not self.manager.covers(start, end):
+            hint = ZOOM_HINT if self.manager.analysis_window is None else "Zoom so that all of it is in view"
+            raise LongSoundError(hint)
+
     def _where(self) -> str:
         if self.axis.selection:
             a, b = self.axis.selection
             return f"{a:.4f}–{b:.4f} s"
         return f"{self.axis.cursor:.4f} s"
 
+    @_reports_long_sound_limits
     def query_pitch(self):
+        self._check_coverage()
         p = self.result("pitch")
         if self.axis.selection:
             st = queries.pitch_stats(p, *self.axis.selection)
@@ -549,7 +599,9 @@ class SoundEditor(QWidget):
             f0 = queries.pitch_at(p, self.axis.cursor)
             self.log.emit(f"Pitch at {self._where()}: {fmt(f0, 'Hz')} ({fmt(queries.semitones(f0), 'st re 100 Hz')})")
 
+    @_reports_long_sound_limits
     def query_formants(self):
+        self._check_coverage()
         f = self.result("formants")
         if self.axis.selection:
             stats = queries.formant_stats(f, *self.axis.selection)
@@ -567,7 +619,9 @@ class SoundEditor(QWidget):
             ]
             self.log.emit(f"Formants at {self._where()}: " + ", ".join(parts))
 
+    @_reports_long_sound_limits
     def query_intensity(self):
+        self._check_coverage()
         r = self.result("intensity")
         if self.axis.selection:
             st = queries.intensity_stats(r, *self.axis.selection)
@@ -602,6 +656,9 @@ class SoundEditor(QWidget):
         out = {"Time": "" if t is None else f"{t:.4f} s"}
         if t is None or not 0 <= t <= snd.duration:
             return out
+        if not self.manager.covers(t, t):
+            out["Amplitude"] = f"{snd.amplitude_at(t):+.4f}"
+            return out
         out["Amplitude"] = f"{snd.amplitude_at(t):+.4f}"
         out["Frequency"] = "" if freq is None else f"{freq:.0f} Hz"
         out["Pitch"] = fmt(queries.pitch_at(res["pitch"], t), "Hz", 1) if "pitch" in res else "…"
@@ -616,11 +673,16 @@ class SoundEditor(QWidget):
     # ------------------------------------------------------------------ export
 
     def export_selection(self, path: Path):
-        start, end = self.axis.selection or (0.0, self.doc.sound.duration)
-        self.doc.sound.extract(start, end).save(path)
+        if self.axis.selection:
+            self.doc.sound.extract(*self.axis.selection).save(path)
+        else:
+            self.doc.sound.save(path)
 
     def export_table(self, name: str, path: Path):
         """Write an analysis as CSV, restricted to the selection if there is one."""
+        if self.doc.sound.is_long and not self.axis.selection:
+            raise LongSoundError("Select a stretch and zoom to it: long recordings are analysed in parts")
+        self._check_coverage()
         r = self.result(name)
         if name == "pitch":
             header, cols = ["time_s", "f0_hz"], [r.times, r.frequencies]

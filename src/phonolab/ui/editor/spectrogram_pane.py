@@ -9,7 +9,7 @@ from PyQt6.QtCore import QRectF, Qt, QTimer
 from phonolab.core.analysis import FormantResult, IntensityResult, PitchResult, SpectrogramResult
 from phonolab.ui.editor.base_pane import TimePane
 from phonolab.ui.theme import COLORS, colormap
-from phonolab.ui.workers import AnalysisManager
+from phonolab.ui.workers import ZOOM_HINT, AnalysisManager
 
 SPECTROGRAM_DEBOUNCE_MS = 60
 MAX_FORMANT_DOTS = 30000
@@ -65,8 +65,14 @@ class SpectrogramPane(TimePane):
         self._formant_xy = (np.zeros(0), np.zeros(0))
         self._debounce = QTimer(self, singleShot=True, interval=SPECTROGRAM_DEBOUNCE_MS)
         self._debounce.timeout.connect(lambda: self.manager.set_spectrogram_range(*self.axis.view))
+        self.hint = pg.TextItem(ZOOM_HINT, color=COLORS["muted"], anchor=(0.5, 0.5))
+        self.hint.setVisible(False)
+        self.addItem(self.hint, ignoreBounds=True)
         manager.result_ready.connect(self._on_result)
+        manager.window_changed.connect(self._on_window_changed)
         self.apply_settings()
+        if not manager.analyses_available:
+            self._on_window_changed(False)
 
     def _add_overlay(self) -> OverlayViewBox:
         vb = OverlayViewBox()
@@ -94,8 +100,24 @@ class SpectrogramPane(TimePane):
         for name in self.LAYERS:
             self._on_result(name)
 
+    def _on_window_changed(self, available: bool):
+        """Long sounds: analyses appear only when zoomed in far enough."""
+        self.hint.setVisible(not available)
+        if not available:
+            self.image.clear()
+            self.pitch_curve.setData([], [])
+            self.intensity_curve.setData([], [])
+            self._formant_xy = (np.zeros(0), np.zeros(0))
+            self._update_formant_dots()
+            self._place_hint()
+
+    def _place_hint(self):
+        start, end = self.axis.view
+        self.hint.setPos((start + end) / 2, self.vb.viewRange()[1][1] / 2)
+
     def retheme(self):
         super().retheme()
+        self.hint.setColor(COLORS["muted"])
         self.formant_dots.setBrush(pg.mkBrush(COLORS["formant"]))
         self.pitch_curve.setPen(pg.mkPen(COLORS["pitch"], width=3))
         self.intensity_curve.setPen(pg.mkPen(COLORS["intensity"], width=2))
@@ -133,6 +155,7 @@ class SpectrogramPane(TimePane):
         if not hasattr(self, "_debounce"):
             return  # still constructing
         self._debounce.start()
+        self._place_hint()
         self._update_formant_dots()
 
     def _on_result(self, name: str):

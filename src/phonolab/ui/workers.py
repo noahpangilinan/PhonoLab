@@ -20,9 +20,12 @@ import numpy as np
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from phonolab.core import registry
-from phonolab.core.sound import Sound
+from phonolab.core.analysis import shift_times
+from phonolab.core.sound import MAX_WINDOW_SECONDS, LongSoundError, Sound
 
 log = logging.getLogger(__name__)
+
+ZOOM_HINT = f"Zoom in to {MAX_WINDOW_SECONDS:.0f} seconds or less to see analyses"
 
 # ---------------------------------------------------------------- worker process side
 
@@ -57,6 +60,16 @@ def _run_analysis(shm_name: str, n_samples: int, sampling_rate: float, name: str
 def _run_job(shm_name: str, n_samples: int, sampling_rate: float, fn, args: tuple):
     """Run ``fn(sound, *args)`` (a module-level function) on the shared sound."""
     return fn(_attach(shm_name, n_samples, sampling_rate), *args)
+
+
+def _run_long_analysis(sound: Sound, name: str, args: tuple, start: float, end: float):
+    """Analyse one stretch of a long sound. ``sound`` arrives as a file name, not as samples."""
+    _, fn = registry.ANALYSES[name]
+    return shift_times(fn(sound.extract(start, end), *args), start)
+
+
+def _run_on_sound(sound: Sound, fn, args: tuple):
+    return fn(sound, *args)
 
 
 # ---------------------------------------------------------------- GUI process side
@@ -126,6 +139,9 @@ class AnalysisManager(QObject):
 
     Pitch, formants and intensity are computed once over the whole sound; the
     spectrogram is computed for the visible window so it stays sharp when zoomed.
+
+    Long sounds are too big to analyse whole, so every analysis covers ``analysis_window``:
+    a stretch around the view, or None when the view is wider than MAX_WINDOW_SECONDS.
     """
 
     result_ready = pyqtSignal(str)
@@ -133,6 +149,7 @@ class AnalysisManager(QObject):
     job_failed = pyqtSignal(str, str)
     busy_changed = pyqtSignal(str, bool)  # name, busy
     error = pyqtSignal(str, str)
+    window_changed = pyqtSignal(bool)  # long sounds: whether analyses are available at this zoom
 
     def __init__(self, sound: Sound, settings: dict, parent=None):
         super().__init__(parent)
@@ -149,14 +166,29 @@ class AnalysisManager(QObject):
         self._job_signals.done.connect(self._on_job_done)
         self._job_signals.failed.connect(self._on_job_failed)
         self._spectrogram_range = (0.0, sound.duration)
-        self._shared = SharedSound(sound)
+        self.analysis_window: tuple[float, float] | None = None
+        self._shared = None if sound.is_long else SharedSound(sound)
+        self._open = [True]  # shared with job callbacks, which can outlive this object
 
     def close(self) -> None:
         """Release shared memory; call when the document closes."""
+        self._open[0] = False
         for fut in self._futures.values():
             fut.cancel()
         self._tokens.clear()
-        self._shared.close()
+        if self._shared is not None:
+            self._shared.close()
+
+    @property
+    def analyses_available(self) -> bool:
+        return not self.sound.is_long or self.analysis_window is not None
+
+    def covers(self, start: float, end: float) -> bool:
+        """Whether current results span ``[start, end]``, so statistics over it would be complete."""
+        if not self.sound.is_long:
+            return True
+        window = self.analysis_window
+        return window is not None and window[0] <= start and end <= window[1]
 
     def set_enabled(self, name: str, enabled: bool) -> None:
         if enabled:
@@ -175,11 +207,34 @@ class AnalysisManager(QObject):
 
     def set_spectrogram_range(self, start: float, end: float) -> None:
         self._spectrogram_range = (start, end)
-        if "spectrogram" in self.enabled:
+        if self.sound.is_long:
+            self._follow_view(start, end)
+        if "spectrogram" in self.enabled and self.analyses_available:
             self.request("spectrogram")
 
+    def _follow_view(self, start: float, end: float) -> None:
+        """Keep the analysis window around the view, with room to scroll before re-analysing."""
+        width = end - start
+        if width > MAX_WINDOW_SECONDS:
+            if self.analysis_window is not None:
+                self.analysis_window = None
+                for name in self.enabled | set(self.results):
+                    self._tokens[name] = self._tokens.get(name, 0) + 1  # drop anything still running
+                self.results.clear()
+                self.window_changed.emit(False)
+            return
+        if self.covers(start, end):
+            return
+        first = self.analysis_window is None
+        margin = width / 2 + 1.0  # the extra second gives analyses context at the edges
+        self.analysis_window = (max(0.0, start - margin), min(self.sound.duration, end + margin))
+        if first:
+            self.window_changed.emit(True)
+        for name in self.enabled - {"spectrogram"}:
+            self.request(name)
+
     def request(self, name: str) -> None:
-        if self._shared.shm is None:
+        if not self._open[0] or not self.analyses_available:
             return
         extra = self._spectrogram_range if name == "spectrogram" else ()
         token = self._tokens.get(name, 0) + 1
@@ -187,23 +242,27 @@ class AnalysisManager(QObject):
         if (old := self._futures.get(name)) is not None:
             old.cancel()  # only succeeds if it hasn't started; stale results are dropped anyway
         kind = "spectrogram" if name == "spectrogram" else "analysis"
-        shared = self._shared
+        shared, args = self._shared, registry.compute_args(name, self.settings)
         try:
-            fut = _executor(kind).submit(
-                _run_analysis, shared.shm.name, shared.n_samples, shared.sampling_rate,
-                name, (*registry.compute_args(name, self.settings), *extra),
-            )  # fmt: skip
+            if self.sound.is_long:
+                span = self._spectrogram_range if name == "spectrogram" else self.analysis_window
+                fut = _executor(kind).submit(_run_long_analysis, self.sound, name, args, *span)
+            else:
+                fut = _executor(kind).submit(
+                    _run_analysis, shared.shm.name, shared.n_samples, shared.sampling_rate,
+                    name, (*args, *extra),
+                )  # fmt: skip
         except RuntimeError as e:  # pool shut down or broken
             self.error.emit(name, str(e))
             return
         self._futures[name] = fut
         self.busy_changed.emit(name, True)
-        signals = self._signals
+        signals, is_open = self._signals, self._open
 
         def finished(f: Future):
             # Runs on the executor's management thread; Qt queues the signal to the GUI thread.
             # A closed document's shared memory is gone, so its pending jobs fail: ignore them.
-            if f.cancelled() or shared.shm is None:
+            if f.cancelled() or not is_open[0]:
                 return
             try:
                 if (exc := f.exception()) is not None:
@@ -221,17 +280,22 @@ class AnalysisManager(QObject):
 
         A newer submit with the same key supersedes an older one.
         """
-        if self._shared.shm is None:
+        if not self._open[0]:
             return
         token = self._tokens.get(key, 0) + 1
         self._tokens[key] = token
         shared = self._shared
-        fut = _executor("analysis").submit(_run_job, shared.shm.name, shared.n_samples, shared.sampling_rate, fn, args)
+        if self.sound.is_long:
+            fut = _executor("analysis").submit(_run_on_sound, self.sound, fn, args)
+        else:
+            fut = _executor("analysis").submit(
+                _run_job, shared.shm.name, shared.n_samples, shared.sampling_rate, fn, args
+            )
         self.busy_changed.emit(key, True)
-        signals = self._job_signals
+        signals, is_open = self._job_signals, self._open
 
         def finished(f: Future):
-            if f.cancelled() or shared.shm is None:  # cancelled, or the document closed
+            if f.cancelled() or not is_open[0]:  # cancelled, or the document closed
                 return
             try:
                 if (exc := f.exception()) is not None:
@@ -255,7 +319,14 @@ class AnalysisManager(QObject):
 
     def compute_now(self, name: str):
         """Compute synchronously in this process (for queries on hidden layers)."""
-        self.results[name] = registry.compute(name, self.sound, self.settings)
+        if self.sound.is_long:
+            if self.analysis_window is None:
+                raise LongSoundError(ZOOM_HINT)
+            start, end = self.analysis_window
+            part = self.sound.extract(start, end)
+            self.results[name] = shift_times(registry.compute(name, part, self.settings), start)
+        else:
+            self.results[name] = registry.compute(name, self.sound, self.settings)
         return self.results[name]
 
     def _on_done(self, name: str, token: int, result):

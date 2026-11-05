@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 import parselmouth
@@ -55,12 +55,16 @@ def slice_range(sound: Sound, s: SpectrumSettings, cursor: float, selection) -> 
 
 
 def compute_slice(sound: Sound, s: SpectrumSettings, start: float, end: float) -> SpectrumResult:
+    if sound.is_long:
+        return replace(compute_slice(sound.extract(start, end), s, 0.0, end - start), start=start, end=end)
     spectrum = _part(sound, start, end, window=True).to_spectrum()
     ltas = call(spectrum, "To Ltas (1-to-1)")
     return _result("slice", start, end, spectrum, ltas, s)
 
 
 def compute_ltas(sound: Sound, s: SpectrumSettings, start: float, end: float) -> SpectrumResult:
+    if sound.is_long:
+        return replace(compute_ltas(sound.extract(start, end), s, 0.0, end - start), start=start, end=end)
     part = _part(sound, start, end, window=False)
     ltas = call(part, "To Ltas", s.ltas_bandwidth)
     spectrum = part.to_spectrum() if end - start <= MAX_MOMENTS_SECONDS else None
@@ -81,6 +85,7 @@ def _result(kind, start, end, spectrum, ltas, s: SpectrumSettings) -> SpectrumRe
 
 def cpps(sound: Sound, start: float, end: float) -> float:
     """Smoothed cepstral peak prominence (dB) with Praat's standard settings (Hillenbrand-style)."""
+    sound, start, end = sound.part(start, end)
     if praat_engine.available():
         body = f"""Extract part: {max(0.0, start)}, {min(sound.duration, end)}, "rectangular", 1, "yes"
 To PowerCepstrogram: 60, 0.002, 5000, 50

@@ -25,6 +25,7 @@ from PyQt6.QtWidgets import (
 )
 
 from phonolab.core import scripting
+from phonolab.core.sound import LongSoundError
 from phonolab.ui import workers
 
 WORKER = "script"
@@ -153,11 +154,19 @@ class ScriptWindow(QDialog):
             return
         doc = editor.doc
         code = self.editor.toPlainText()
+        sound, textgrid = doc.sound, doc.textgrid
+        if sound.is_long:  # scripts need the sound in memory, so they get the selection or the visible part
+            try:
+                sound, textgrid = sound.extract(*(editor.axis.selection or editor.axis.view)), None
+            except LongSoundError as e:
+                QMessageBox.information(self, "Script", str(e))
+                return
         if self.language.currentData() == "praat":
-            fn, args = scripting.run_praat, (doc.sound, doc.textgrid, code, self.arguments.text())
+            fn, args = scripting.run_praat, (sound, textgrid, code, self.arguments.text())
         else:
-            fn, args = scripting.run_python, (doc.sound, doc.textgrid, code)
-        self.output.setPlainText(f"Running on {doc.sound.name}…")
+            fn, args = scripting.run_python, (sound, textgrid, code)
+        where = "the selected part of a long recording" if doc.sound.is_long else doc.sound.name
+        self.output.setPlainText(f"Running on {where}…")
         self.run_button.setText("Stop")
         self._target = editor
         self._future = workers.run_in_worker(WORKER, fn, *args)

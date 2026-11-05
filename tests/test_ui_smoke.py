@@ -423,3 +423,54 @@ def test_start_page_actions_and_recent_files(window, qtbot, wav, monkeypatch):
     with qtbot.waitSignal(page.open_requested):
         page.findChildren(ActionRow)[0].click()
     page.grab()  # paints the delegate for both an existing and a missing file
+
+
+@pytest.fixture
+def long_window(window, wav, monkeypatch):
+    """A window holding a file treated as long, with analyses limited to half a second at a time."""
+    from phonolab.core import sound as sound_module
+    from phonolab.ui import workers
+
+    monkeypatch.setattr(sound_module, "LONG_SOUND_VALUES", 1000)
+    monkeypatch.setattr(workers, "MAX_WINDOW_SECONDS", 0.5)
+    window.open_sound(str(wav))
+    assert window.editor.doc.sound.is_long
+    return window
+
+
+def test_long_sound_analyses_follow_the_zoom(long_window, qtbot):
+    editor = long_window.editor
+    manager = editor.manager
+    assert not manager.analyses_available and manager.results == {}
+    assert editor.spectrogram.hint.isVisible()
+    editor.axis.set_view(0.3, 0.6)
+    manager.set_spectrogram_range(0.3, 0.6)
+    assert manager.analyses_available and manager.covers(0.3, 0.6)
+    qtbot.waitUntil(lambda: {"pitch", "spectrogram", "voicing"} <= set(manager.results), timeout=20000)
+    assert not editor.spectrogram.hint.isVisible()
+    assert manager.results["pitch"].times[0] > 0  # placed on the whole sound's time axis
+    editor.axis.set_cursor(0.45)
+    editor.query_pitch()
+    assert "120" in long_window.log_panel.text.toPlainText()
+    manager.set_spectrogram_range(0.0, 1.0)  # zoomed back out
+    assert not manager.analyses_available and manager.results == {}
+    assert editor.spectrogram.hint.isVisible()
+
+
+def test_long_sound_refuses_partial_answers_and_whole_file_work(long_window):
+    from phonolab.core import sound_ops
+
+    editor = long_window.editor
+    messages = []
+    editor.message.connect(messages.append)
+    long_window.statusBar().messageChanged.connect(messages.append)
+    editor.axis.set_cursor(0.45)
+    editor.query_pitch()  # zoomed out: no analysis to report
+    assert any("Zoom in" in m for m in messages) and not long_window.log_panel.text.toPlainText()
+    editor.axis.set_selection(0.1, 0.9)
+    assert editor.readout(0.5, None).get("Pitch") is None
+    long_window._derive(sound_ops.reverse)
+    assert long_window.tabs.count() == 1 and any("Extract" in m for m in messages)
+    assert editor.ensure_manipulation() is False
+    long_window.extract_selection()  # the way out: an ordinary sound
+    assert long_window.tabs.count() == 2 and not long_window.editor.doc.sound.is_long

@@ -20,7 +20,7 @@ from phonolab.core.analysis import (  # noqa: E402
     setting,
 )
 from phonolab.core.ipa import to_unicode  # noqa: E402
-from phonolab.core.sound import Sound  # noqa: E402
+from phonolab.core.sound import MAX_WINDOW_SECONDS, LongSoundError, Sound  # noqa: E402
 from phonolab.core.textgrid import IntervalTier, TextGrid  # noqa: E402
 
 PANELS = ("waveform", "spectrogram", "pitch", "voicing", "textgrid")
@@ -78,6 +78,8 @@ def make_figure(sound: Sound, textgrid: TextGrid | None, req: FigureRequest) -> 
     end = sound.duration if req.end is None else min(req.end, sound.duration)
     if end - start <= 0:
         raise ValueError("Empty time range")
+    if sound.is_long and end - start > MAX_WINDOW_SECONDS:
+        raise LongSoundError(f"Choose {MAX_WINDOW_SECONDS:.0f} seconds or less of this long recording")
     fs = req.figure
     pal = _palette(fs.colour)
     tiers = []

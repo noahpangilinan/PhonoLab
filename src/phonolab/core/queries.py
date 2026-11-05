@@ -96,6 +96,9 @@ def formant_stats(f: FormantResult, start: float, end: float) -> list[RangeStats
 def formant_bandwidths_at(sound: Sound, s: FormantSettings, t: float) -> list[float]:
     """Formant bandwidths at ``t``, from a short Burg analysis around it (not kept in bulk results)."""
     margin = 2 * s.window_length
+    if sound.is_long:
+        a = max(0.0, t - margin)
+        return formant_bandwidths_at(sound.extract(a, min(sound.duration, t + margin)), s, t - a)
     part = sound.praat.extract_part(
         from_time=max(0.0, t - margin), to_time=min(sound.duration, t + margin), preserve_times=True
     )

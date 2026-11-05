@@ -12,7 +12,7 @@ import numpy as np
 from phonolab.core import analysis, queries, spectrum, voice
 from phonolab.core.analysis import FormantSettings, IntensitySettings, PitchSettings
 from phonolab.core.ipa import to_unicode
-from phonolab.core.sound import SUPPORTED_EXTENSIONS, Sound
+from phonolab.core.sound import MAX_PART_SECONDS, SUPPORTED_EXTENSIONS, LongSoundError, Sound
 from phonolab.core.textgrid import IntervalTier, TextGrid
 
 MEASURES = {
@@ -77,16 +77,86 @@ def measure_file(path: str | Path, options: BatchOptions) -> list[dict]:
     """One row per file (or per labelled interval). Errors become a row with an 'error' column."""
     path = Path(path)
     base = {"file": path.name, "folder": str(path.parent)}
+    sound = None
     try:
         sound = Sound.from_file(path)
         ranges = _ranges(sound, path, options.tier)
-        m = options.measures
-        pitch = analysis.compute_pitch(sound, options.pitch) if "pitch" in m else None
-        formants = analysis.compute_formants(sound, options.formants) if "formants" in m else None
-        intensity = analysis.compute_intensity(sound, options.intensity) if "intensity" in m else None
+        if sound.is_long:
+            return _measure_long(sound, ranges, options, base)
+        return _measure_ranges(sound, ranges, options, base)
     except Exception as e:  # unreadable file, missing tier: report it and carry on with the batch
         return [{**base, "error": str(e)}]
+    finally:
+        if sound is not None:
+            sound.release()
 
+
+def _measure_long(sound: Sound, ranges: list, options: BatchOptions, base: dict) -> list[dict]:
+    """Long recordings are never analysed whole: intervals load one at a time, whole files in chunks."""
+    if not options.tier:
+        return [_measure_long_whole(sound, options, base)]
+    rows = []
+    for start, end, label in ranges:
+        try:
+            (row,) = _measure_ranges(sound.extract(start, end), [(0.0, end - start, label)], options, base)
+            row.update(start_s=round(start, 6), end_s=round(end, 6))
+        except LongSoundError as e:
+            row = {**base, "tier": options.tier, "label": to_unicode(label), "error": str(e)}
+        rows.append(row)
+    return rows
+
+
+def _measure_long_whole(sound: Sound, options: BatchOptions, base: dict) -> dict:
+    m = options.measures
+    pitches, formants, intensities = [], [], []
+    for start in np.arange(0.0, sound.duration, MAX_PART_SECONDS):
+        part = sound.extract(start, min(start + MAX_PART_SECONDS, sound.duration))
+        if "pitch" in m:
+            pitches.append(analysis.shift_times(analysis.compute_pitch(part, options.pitch), start))
+        if "formants" in m:
+            formants.append(analysis.shift_times(analysis.compute_formants(part, options.formants), start))
+        if "intensity" in m:
+            intensities.append(analysis.shift_times(analysis.compute_intensity(part, options.intensity), start))
+    row = {**base, "duration_s": round(sound.duration, 6)}
+    pitch = formant = intensity = None
+    if pitches:
+        pitch = analysis.PitchResult(
+            np.concatenate([p.times for p in pitches]), np.concatenate([p.frequencies for p in pitches])
+        )
+    if formants:
+        formant = analysis.FormantResult(
+            np.concatenate([f.times for f in formants]),
+            np.hstack([f.frequencies for f in formants]),
+            np.concatenate([f.intensity_db for f in formants]),
+        )
+    if intensities:
+        intensity = analysis.IntensityResult(
+            np.concatenate([i.times for i in intensities]), np.concatenate([i.db for i in intensities])
+        )
+    _add_statistics(row, 0.0, sound.duration, pitch, formant, intensity)
+    if m & {"voice", "cpps", "moments"}:
+        row["error"] = "voice, CPPS and spectral moments skipped: too long as a whole, so measure per interval"
+    return row
+
+
+def _add_statistics(row: dict, start: float, end: float, pitch, formants, intensity) -> None:
+    if pitch is not None:
+        st = queries.pitch_stats(pitch, start, end)
+        row.update(
+            f0_mean_hz=st.mean, f0_median_hz=st.median, f0_sd_hz=st.stdev, f0_min_hz=st.minimum, f0_max_hz=st.maximum
+        )
+    if formants is not None:
+        for i, st in enumerate(queries.formant_stats(formants, start, end)[:4]):
+            row[f"F{i + 1}_mean_hz"] = st.mean
+    if intensity is not None:
+        row["intensity_mean_db"] = queries.intensity_stats(intensity, start, end).mean
+
+
+def _measure_ranges(sound: Sound, ranges: list, options: BatchOptions, base: dict) -> list[dict]:
+    m = options.measures
+    pitch = analysis.compute_pitch(sound, options.pitch) if "pitch" in m else None
+    formants = analysis.compute_formants(sound, options.formants) if "formants" in m else None
+    intensity = analysis.compute_intensity(sound, options.intensity) if "intensity" in m else None
     rows = []
     for start, end, label in ranges:
         row = dict(base)
@@ -94,15 +164,7 @@ def measure_file(path: str | Path, options: BatchOptions) -> list[dict]:
             row.update(tier=options.tier, label=to_unicode(label), start_s=round(start, 6), end_s=round(end, 6))
         row["duration_s"] = round(end - start, 6)
         errors = []
-        if pitch is not None:
-            st = queries.pitch_stats(pitch, start, end)
-            row.update(f0_mean_hz=st.mean, f0_median_hz=st.median, f0_sd_hz=st.stdev,
-                       f0_min_hz=st.minimum, f0_max_hz=st.maximum)  # fmt: skip
-        if formants is not None:
-            for i, st in enumerate(queries.formant_stats(formants, start, end)[:4]):
-                row[f"F{i + 1}_mean_hz"] = st.mean
-        if intensity is not None:
-            row["intensity_mean_db"] = queries.intensity_stats(intensity, start, end).mean
+        _add_statistics(row, start, end, pitch, formants, intensity)
         if "voice" in options.measures:
             try:
                 report = voice.voice_report(sound, options.pitch, options.voice, start, end)

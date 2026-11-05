@@ -23,6 +23,7 @@ class VoicingBar(QWidget):
         self.plot_area = plot_area  # callable -> (left_px, right_px)
         self.result: VoicingResult | None = None
         self.playhead: float | None = None
+        self.hint = "analysing…"  # shown while there's no result
         self.setFixedHeight(BAR_HEIGHT)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.setToolTip("Voicing: blue where Praat finds glottal pulses. Click a stretch to select it.")
@@ -54,7 +55,7 @@ class VoicingBar(QWidget):
         p.fillRect(track, QColor(COLORS["track"]))
         p.setClipRect(track)
         if self.result is None:
-            p.drawText(track, Qt.AlignmentFlag.AlignCenter, "analysing…")
+            p.drawText(track, Qt.AlignmentFlag.AlignCenter, self.hint)
         else:
             v0, v1 = self.axis.view
             r = self.result

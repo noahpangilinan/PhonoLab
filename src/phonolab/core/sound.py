@@ -128,9 +128,12 @@ def _load_long(path: Path, progress) -> Sound:
                 highs.append(grouped.max(axis=1))
                 if progress is not None and progress(fraction) is False:
                     raise SoundLoadCancelledError
-    except BaseException:
+    except SoundLoadCancelledError:
         shutil.rmtree(folder, ignore_errors=True)
         raise
+    except Exception as e:  # corrupt data part-way through, disk full, ...
+        shutil.rmtree(folder, ignore_errors=True)
+        raise SoundLoadError(f"Could not read {path.name}: {e}") from e
     if frames == 0:
         shutil.rmtree(folder, ignore_errors=True)
         raise SoundLoadError(f"{path.name} contains no audio")
