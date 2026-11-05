@@ -4,9 +4,9 @@
 
 PhonoLab is a desktop application for phoneticians, speech scientists, linguists and clinicians. It runs
 [Praat](https://www.fon.hum.uva.nl/praat/)'s own analysis code through
-[Parselmouth](https://parselmouth.readthedocs.io) (currently Praat 6.1.38), so pitch, formant, intensity,
-voice and spectral measurements come from Praat's own algorithms. It wraps them in an editor built around
-everyday work:
+[Parselmouth](https://parselmouth.readthedocs.io), so pitch, formant, intensity, voice and spectral
+measurements come from Praat's own algorithms, using the current Praat 7. It wraps them in an editor built
+around everyday work:
 tabs, drag and drop, one undo history, live readouts, background analysis, IPA input, search, batch
 processing and publication figures.
 
@@ -84,7 +84,7 @@ Without `make`, use `uv sync` and then `uv run phonolab`.
 make package        # builds dist/PhonoLab.exe with PyInstaller
 ```
 
-The result is a single file, `dist/PhonoLab.exe` (about 105 MB), that runs on any 64-bit Windows machine
+The result is a single file, `dist/PhonoLab.exe` (about 155 MB, including Praat 7), that runs on any 64-bit Windows machine
 without Python. Copy it anywhere and double-click it. Building on macOS or Linux produces that platform's
 equivalent; PyInstaller can't cross-compile, so build on the platform you want to ship to.
 
@@ -108,7 +108,10 @@ boundary. `make package` on a Mac builds `dist/PhonoLab.app`.
 ### Dependencies
 
 Everything installs from PyPI; nothing else is needed. Notable packages:
-- `praat-parselmouth`: the Praat engine (bundles Praat 6.1.38).
+- `praat-parselmouth`: Praat as a Python library (Praat 6.1.38), used for spectrograms and manipulation.
+- The Praat 7 program itself, which `make setup` downloads (or `make praat`). It's pinned by version and
+  checksum in `packaging/fetch_praat.py`, and bundled in builds. Without it PhonoLab still runs, with
+  measurements from Parselmouth.
 - `PyQt6` and `pyqtgraph`: the interface.
 - `soundfile`: audio input/output through libsndfile.
 - `av`: FFmpeg, for M4A/AAC and similar formats.
@@ -568,7 +571,10 @@ in the label field always types; it never triggers shortcuts.
 
 ## How results relate to Praat
 
-- **The same algorithms, as of Praat 6.1.38.** Every analysis is a Praat command run by Parselmouth (pitch, formants,
+- **Two engines.** Pitch, formants, intensity, pulses, voicing, the voice report, CPPS and Praat scripts run on
+  the bundled Praat 7. Spectrograms, spectra and manipulation still use Parselmouth's Praat 6.1.38.
+  *About PhonoLab* shows which engine is in use.
+- **The same algorithms.** Every analysis is a Praat command (pitch, formants,
   intensity, spectrogram, voice report, LTAS, spectral moments, CPPS, PSOLA, Klatt, filters, resampling).
   PhonoLab adds no measurement code of its own beyond simple statistics over Praat's frames: means,
   medians, extremes, slopes, and the energy-averaged intensity mean.
@@ -580,8 +586,9 @@ in the label field always types; it never triggers shortcuts.
 - **Voice reports** are computed on the selection plus a margin of 3 ÷ pitch floor on each side, so the
   pitch analysis has context at the edges.
 - **Spectral slices** use a Hanning window over the selection.
-- **Bundled Praat version: 6.1.38 (January 2021).** Commands added since aren't available, and later fixes
-  to Praat's algorithms aren't included, so some numbers can differ slightly from current Praat (now 7.0).
+- **Differences between the two versions** are small: on real speech, pitch, formants and intensity agreed
+  to within 0.03 %. Jitter and shimmer differed by up to 0.8 %, CPPS is 3–4 % higher in Praat 7 (it's
+  calibrated since 6.4.39), and robust formants also changed.
 
 ---
 
@@ -697,8 +704,8 @@ Code style is ruff with a 120-character line length. Commit messages are short s
 
 ## Not yet covered
 
-- Everything added to Praat since 6.1.38, including filtered pitch methods, FormantPath, H1–H2 in the voice
-  report, and speech recognition.
+- Interface for what Praat added after 6.1.38, such as filtered pitch methods, FormantPath and speech
+  recognition. (H1–H2 already appears in the voice report.)
 - Articulatory synthesis.
 - Praat's statistics and learning tools (Table, PCA, discriminant analysis, OT grammars) and listening
   experiments (ExperimentMFC).
@@ -709,7 +716,8 @@ Code style is ruff with a 120-character line length. Commit messages are short s
 ## License
 
 PhonoLab is free software under the **GNU General Public License v3.0 or later**. Praat and Parselmouth
-are GPL-licensed, so PhonoLab is too. See [LICENSE](LICENSE).
+are GPL-licensed, so PhonoLab is too. See [LICENSE](LICENSE). Builds include an unmodified copy of the Praat
+program; its source for each version is at https://github.com/praat/praat/releases.
 
 Praat is by Paul Boersma and David Weenink; Parselmouth is by Yannick Jadoul, Bill Thompson and Bart de
 Boer. If you publish results obtained with PhonoLab, please cite Praat and Parselmouth.

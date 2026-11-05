@@ -118,3 +118,17 @@ def test_pulses_of_silence_are_empty():
     from tests.conftest import make_sine
 
     assert len(voice.compute_pulses(make_sine(amplitude=0.0), voice.VoiceSettings(), PitchSettings()).times) == 0
+
+
+@needs_praat
+def test_engine_self_check_and_praat_7_scripts(vowel, capsys):
+    from phonolab.app import engine_info
+    from phonolab.core import scripting
+
+    assert engine_info() == 0
+    assert "script result: 42" in capsys.readouterr().out
+    # Commands newer than Parselmouth's Praat work in the script window.
+    r = scripting.run_praat(
+        vowel, None, 'To Pitch (filtered ac): 0, 50, 800, 15, "no", 0.03, 0.09, 0.5, 0.055, 0.35, 0.14\n'
+    )
+    assert r.error is None

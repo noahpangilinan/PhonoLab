@@ -21,7 +21,7 @@ from PyQt6.QtWidgets import (
 
 from phonolab import __version__
 from phonolab.audio.player import AudioPlayer
-from phonolab.core import sound_ops
+from phonolab.core import praat_engine, sound_ops
 from phonolab.core.batch import BatchOptions
 from phonolab.core.figures import FigureSettings
 from phonolab.core.registry import ANALYSES
@@ -924,7 +924,9 @@ class MainWindow(QMainWindow):
             "About PhonoLab",
             f"<h3>PhonoLab {__version__}</h3>"
             "<p>Acoustic analysis and annotation for speech.</p>"
-            f"<p>Analyses by Praat {parselmouth.PRAAT_VERSION} via Parselmouth {parselmouth.VERSION}.</p>"
+            f"<p>Measurements by {praat_engine.engine_description()}.<br>"
+            f"Spectrograms and manipulation by Parselmouth {parselmouth.VERSION} "
+            f"(Praat {parselmouth.PRAAT_VERSION}).</p>"
             "<p>Licensed under the GNU GPL v3 or later.</p>",
         )
 

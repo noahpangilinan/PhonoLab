@@ -11,7 +11,13 @@ from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs
 
 VERSION = re.search(r'__version__ = "([^"]+)"', Path("../src/phonolab/__init__.py").read_text()).group(1)
 
+PRAAT = Path("praat/Praat.app" if sys.platform == "darwin" else "praat/Praat.exe")
+if not PRAAT.exists():
+    raise SystemExit("Praat is missing: run  uv run python packaging/fetch_praat.py  first")
+files = [PRAAT] if PRAAT.is_file() else [p for p in PRAAT.rglob("*") if p.is_file()]
+
 datas = collect_data_files("pyqtgraph") + collect_data_files("matplotlib")
+datas += [(str(p), str(p.parent)) for p in files]
 binaries = collect_dynamic_libs("parselmouth") + collect_dynamic_libs("av")
 
 a = Analysis(

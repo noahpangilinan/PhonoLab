@@ -2,7 +2,7 @@ name: macOS build
 
 on:
   push:
-    branches: [main, praat-parity]
+    branches: [main, praat7-engine]
     tags: ["v*"]
   workflow_dispatch:
 
@@ -26,6 +26,9 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked
 
+      - name: Fetch Praat
+        run: uv run python packaging/fetch_praat.py
+
       # A failure doesn't stop the build, so the disk images still appear; the last step fails the run.
       - name: Run tests
         id: tests
@@ -44,6 +47,9 @@ jobs:
       - name: Build app
         working-directory: packaging
         run: uv run pyinstaller --noconfirm --distpath ../dist --workpath ../build phonolab.spec
+
+      - name: Check the bundled Praat works
+        run: dist/PhonoLab.app/Contents/MacOS/PhonoLab --engine-info
 
       - name: Check the app starts
         env:

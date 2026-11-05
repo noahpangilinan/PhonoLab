@@ -13,6 +13,7 @@ from PyQt6.QtCore import QEvent, QObject, QSettings
 from PyQt6.QtWidgets import QApplication, QMessageBox
 
 from phonolab import __version__
+from phonolab.core import praat_engine
 from phonolab.core.settings import Preferences
 from phonolab.ui.icon import app_icon
 from phonolab.ui.theme import apply_theme
@@ -73,12 +74,27 @@ def create_app(argv: list[str]) -> QApplication:
     return app
 
 
+def engine_info() -> int:
+    """Self-check for builds: prove the bundled Praat runs. Windowed builds have no stdout, so log too."""
+    try:
+        result = praat_engine.run_script("writeInfoLine: 6 * 7").strip()
+    except praat_engine.PraatEngineError as e:
+        result = f"failed: {e}"
+    line = f"{praat_engine.engine_description()}; script result: {result}"
+    log.info("Engine check: %s", line)
+    if sys.stdout is not None:
+        print(line)
+    return 0 if result == "42" else 1
+
+
 def run(argv: list[str] | None = None) -> int:
     argv = sys.argv if argv is None else argv
     log_file = setup_logging()
+    if "--engine-info" in argv:
+        return engine_info()
     _install_excepthook(log_file)
     app = create_app(argv)
-    log.info("PhonoLab %s starting", __version__)
+    log.info("PhonoLab %s starting; measurements by %s", __version__, praat_engine.engine_description())
 
     from phonolab.ui import workers
     from phonolab.ui.main_window import MainWindow

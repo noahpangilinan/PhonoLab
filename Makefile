@@ -1,4 +1,4 @@
-.PHONY: help setup sync run test lint format package clean
+.PHONY: help setup sync run test lint format praat package clean
 
 help:
 	@echo "Available commands:"
@@ -8,6 +8,7 @@ help:
 	@echo "  make test    - Run tests"
 	@echo "  make lint    - Run linter (ruff)"
 	@echo "  make format  - Format code (ruff)"
+	@echo "  make praat   - Download the pinned Praat program (needed once)"
 	@echo "  make package - Build a single standalone dist/PhonoLab.exe"
 	@echo "  make clean   - Remove virtual environment"
 
@@ -15,6 +16,7 @@ help:
 setup:
 	uv venv
 	uv sync
+	uv run python packaging/fetch_praat.py
 
 sync:
 	uv sync
@@ -30,6 +32,9 @@ lint:
 
 format:
 	uv run ruff format .
+
+praat:
+	uv run python packaging/fetch_praat.py
 
 package:
 	cd packaging && uv run pyinstaller --noconfirm --distpath ../dist --workpath ../build phonolab.spec
