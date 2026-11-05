@@ -11,7 +11,7 @@ matplotlib.use("Agg")  # render off-screen; the UI shows the result as an image
 import numpy as np  # noqa: E402
 from matplotlib.figure import Figure  # noqa: E402
 
-from phonolab.core import analysis  # noqa: E402
+from phonolab.core import analysis, voice  # noqa: E402
 from phonolab.core.analysis import (  # noqa: E402
     FormantSettings,
     IntensitySettings,
@@ -23,7 +23,9 @@ from phonolab.core.ipa import to_unicode  # noqa: E402
 from phonolab.core.sound import Sound  # noqa: E402
 from phonolab.core.textgrid import IntervalTier, TextGrid  # noqa: E402
 
-PANELS = ("waveform", "spectrogram", "pitch", "textgrid")
+PANELS = ("waveform", "spectrogram", "pitch", "voicing", "textgrid")
+# Height of each panel relative to a standard one (the TextGrid scales with its tier count).
+PANEL_HEIGHT = {"voicing": 0.22}
 
 
 @dataclass(frozen=True)
@@ -66,9 +68,9 @@ def _local(sound: Sound, start: float, end: float) -> tuple[Sound, float]:
 def _palette(colour: bool) -> dict:
     if colour:
         return {"wave": "#1f3a5f", "pitch": "#1f77d4", "formant": "#d62728", "intensity": "#d4a017",
-                "cmap": "magma_r", "boundary": "#1f3a5f"}  # fmt: skip
+                "cmap": "magma_r", "boundary": "#1f3a5f", "voiced": "#9cc3ea"}  # fmt: skip
     return {"wave": "black", "pitch": "black", "formant": "black", "intensity": "0.4",
-            "cmap": "Greys", "boundary": "black"}  # fmt: skip
+            "cmap": "Greys", "boundary": "black", "voiced": "0.75"}  # fmt: skip
 
 
 def make_figure(sound: Sound, textgrid: TextGrid | None, req: FigureRequest) -> Figure:
@@ -85,7 +87,7 @@ def make_figure(sound: Sound, textgrid: TextGrid | None, req: FigureRequest) -> 
     if not panels:
         raise ValueError("Nothing to draw: choose at least one panel")
 
-    heights = [0.35 * len(tiers) if p == "textgrid" else 1.0 for p in panels]
+    heights = [0.35 * len(tiers) if p == "textgrid" else PANEL_HEIGHT.get(p, 1.0) for p in panels]
     height = fs.panel_height * sum(heights)
     rc = {"font.size": fs.font_size, "font.family": fs.font_family, "axes.linewidth": 0.8}
     with matplotlib.rc_context(rc):
@@ -98,6 +100,8 @@ def make_figure(sound: Sound, textgrid: TextGrid | None, req: FigureRequest) -> 
                 _draw_spectrogram(ax, sound, start, end, req, pal)
             elif panel == "pitch":
                 _draw_pitch(ax, sound, start, end, req, pal)
+            elif panel == "voicing":
+                _draw_voicing(ax, sound, start, end, req, pal)
             else:
                 _draw_textgrid(ax, tiers, start, end, pal)
         axes[-1].set_xlim(start, end)
@@ -168,6 +172,16 @@ def _draw_pitch(ax, sound: Sound, start: float, end: float, req: FigureRequest, 
         margin = 0.1 * (voiced.max() - voiced.min() or 10)
         lo, hi = max(lo, voiced.min() - margin), min(hi, voiced.max() + margin)
     ax.set_ylim(lo, hi)
+
+
+def _draw_voicing(ax, sound: Sound, start: float, end: float, req: FigureRequest, pal):
+    local, offset = _local(sound, start, end)
+    r = voice.compute_voicing(local, voice.VoicingSettings(), req.pitch)
+    spans = [(a + offset, b - a) for a, b in zip(r.starts, r.ends, strict=True)]
+    ax.broken_barh(spans, (0.15, 0.7), facecolor=pal["voiced"], edgecolor=pal["boundary"], linewidth=0.5)
+    ax.set_ylim(0, 1)
+    ax.set_yticks([0.5], ["voicing"])
+    ax.tick_params(axis="y", length=0)
 
 
 def _draw_textgrid(ax, tiers, start: float, end: float, pal):

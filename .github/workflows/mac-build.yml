@@ -1,0 +1,74 @@
+name: macOS build
+
+on:
+  push:
+    branches: [main, praat-parity]
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-latest
+            arch: apple-silicon
+          - runner: macos-15-intel
+            arch: intel
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      # A failure doesn't stop the build, so the disk images still appear; the last step fails the run.
+      - name: Run tests
+        id: tests
+        continue-on-error: true
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          uv run pytest -q --tb=short -rf 2>&1 | tee pytest.txt
+          status=${PIPESTATUS[0]}
+          # Annotations show failures on the run page without opening the logs.
+          grep -E '^(FAILED|ERROR) ' pytest.txt | cut -c1-300 | while read -r line; do
+            echo "::warning title=Test failed::$line"
+          done
+          exit "$status"
+
+      - name: Build app
+        working-directory: packaging
+        run: uv run pyinstaller --noconfirm --distpath ../dist --workpath ../build phonolab.spec
+
+      - name: Check the app starts
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          dist/PhonoLab.app/Contents/MacOS/PhonoLab &
+          app=$!
+          sleep 25
+          kill -0 "$app"
+          echo "Processes:"; pgrep -fl PhonoLab
+          kill "$app"
+
+      - name: Make disk image
+        run: |
+          mkdir dmg
+          cp -R dist/PhonoLab.app dmg/
+          ln -s /Applications dmg/Applications
+          hdiutil create -volname PhonoLab -srcfolder dmg -format UDZO "PhonoLab-macos-${{ matrix.arch }}.dmg"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PhonoLab-macos-${{ matrix.arch }}
+          path: PhonoLab-macos-${{ matrix.arch }}.dmg
+          retention-days: 30
+
+      - name: Fail the run if tests failed
+        if: steps.tests.outcome == 'failure'
+        run: exit 1

@@ -36,3 +36,16 @@ def test_parse_report_sections():
     sections = parse_report(text)
     assert sections["Pitch"] == [("Median pitch", "100 Hz")]
     assert sections["Jitter"] == [("Jitter (local)", "1.2%")]
+
+
+def test_voicing_finds_voiced_stretches_around_silence():
+    from phonolab.core.sound import Sound
+    from phonolab.core.voice import VoicingSettings, compute_voicing
+
+    x = np.concatenate([make_vowel(duration=0.3).mono, np.zeros(4800), make_vowel(duration=0.3).mono])
+    r = compute_voicing(Sound(x, 16000), VoicingSettings(), PitchSettings())
+    assert len(r.starts) == 2
+    assert r.ends[0] == pytest.approx(0.3, abs=0.01) and r.starts[1] == pytest.approx(0.6, abs=0.01)
+    assert r.voiced_at(0.1) and not r.voiced_at(0.45)
+    assert r.voiced_fraction(0, 0.9) == pytest.approx(0.6 / 0.9, abs=0.03)
+    assert r.voiced_fraction(0.35, 0.55) == 0

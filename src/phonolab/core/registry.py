@@ -11,10 +11,11 @@ ANALYSES = {
     "formants": (analysis.FormantSettings, analysis.compute_formants),
     "intensity": (analysis.IntensitySettings, analysis.compute_intensity),
     "pulses": (voice.VoiceSettings, voice.compute_pulses),
+    "voicing": (voice.VoicingSettings, voice.compute_voicing),
 }
 
 # Analyses whose compute function also takes other analyses' settings, in this order.
-DEPENDS = {"pulses": ("pitch",)}
+DEPENDS = {"pulses": ("pitch",), "voicing": ("pitch",)}
 
 
 def dependents(name: str) -> list[str]:

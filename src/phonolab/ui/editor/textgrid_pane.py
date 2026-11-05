@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import bisect
+import sys
 from copy import deepcopy
 
 from PyQt6.QtCore import QPointF, QRectF, Qt, pyqtSignal
@@ -45,6 +46,8 @@ class TextGridView(QWidget):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.label_font = QFont(self.font())
         self.label_font.setPointSizeF(self.font().pointSizeF() * 1.15)
+        self.kind_font = QFont(self.font())
+        self.kind_font.setPointSizeF(self.font().pointSizeF() * 0.85)
         for sig in (axis.view_changed, axis.cursor_changed, axis.selection_changed):
             sig.connect(self.update)
         doc.textgrid_changed.connect(self._on_textgrid_changed)
@@ -266,11 +269,14 @@ class TextGridView(QWidget):
                 p.fontMetrics().elidedText(tier.name, Qt.TextElideMode.ElideRight, int(left - 8)),
             )
             p.setPen(QColor(COLORS["muted"]))
+            p.setFont(self.kind_font)
+            kind = "intervals" if isinstance(tier, IntervalTier) else "points"
             p.drawText(
                 QRectF(right + 4, top, w - right - 6, TIER_HEIGHT),
                 Qt.AlignmentFlag.AlignVCenter,
-                "intervals" if isinstance(tier, IntervalTier) else "points",
+                p.fontMetrics().elidedText(kind, Qt.TextElideMode.ElideRight, int(w - right - 6)),
             )
+            p.setFont(self.font())
             p.setPen(QPen(QColor(COLORS["muted"]), 1))
             p.drawLine(QPointF(0, top + TIER_HEIGHT), QPointF(w, top + TIER_HEIGHT))
         p.drawLine(QPointF(left, 0), QPointF(left, self.height()))
@@ -445,7 +451,10 @@ class TextGridView(QWidget):
         key, mods = ev.key(), ev.modifiers()
         if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             self.add_at_cursor()
-        elif key == Qt.Key.Key_Delete or (key == Qt.Key.Key_Backspace and mods & Qt.KeyboardModifier.AltModifier):
+        elif key == Qt.Key.Key_Delete or (
+            # The key labelled "delete" on a Mac sends Backspace.
+            key == Qt.Key.Key_Backspace and (sys.platform == "darwin" or mods & Qt.KeyboardModifier.AltModifier)
+        ):
             self.remove_near_cursor()
         elif key == Qt.Key.Key_Up and self.selected_tier > 0:
             self.selected_tier -= 1

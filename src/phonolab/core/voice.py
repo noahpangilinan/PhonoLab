@@ -34,6 +34,45 @@ def compute_pulses(sound: Sound, _settings: VoiceSettings, pitch: PitchSettings)
 
 
 @dataclass(frozen=True)
+class VoicingSettings:
+    title = "Voicing"
+    max_period: float = setting(0.02, "Maximum period", "s", 0.001, 1.0, decimals=4)
+    mean_period: float = setting(0.01, "Mean period", "s", 0.001, 1.0, decimals=4)
+
+
+@dataclass(frozen=True)
+class VoicingResult:
+    """Voiced stretches; everything between them is unvoiced."""
+
+    starts: np.ndarray
+    ends: np.ndarray
+
+    def voiced_at(self, t: float) -> bool:
+        i = int(np.searchsorted(self.starts, t, side="right")) - 1
+        return i >= 0 and t < self.ends[i]
+
+    def voiced_fraction(self, start: float, end: float) -> float:
+        start, end = sorted((start, end))
+        if end <= start:
+            return float("nan")
+        overlap = np.clip(np.minimum(self.ends, end) - np.maximum(self.starts, start), 0, None)
+        return float(overlap.sum() / (end - start))
+
+
+def compute_voicing(sound: Sound, s: VoicingSettings, pitch: PitchSettings) -> VoicingResult:
+    """Voiced/unvoiced decision from glottal pulses, as Praat's "PointProcess: To TextGrid (vuv)"."""
+    snd = sound.praat
+    pulses = call([snd, praat_pitch(snd, pitch)], "To PointProcess (cc)")
+    grid = call(pulses, "To TextGrid (vuv)", s.max_period, s.mean_period)
+    starts, ends = [], []
+    for i in range(1, call(grid, "Get number of intervals", 1) + 1):
+        if call(grid, "Get label of interval", 1, i) == "V":
+            starts.append(call(grid, "Get start time of interval", 1, i))
+            ends.append(call(grid, "Get end time of interval", 1, i))
+    return VoicingResult(np.asarray(starts, dtype=float), np.asarray(ends, dtype=float))
+
+
+@dataclass(frozen=True)
 class VoiceReport:
     text: str  # exactly what Praat prints
     sections: dict[str, list[tuple[str, str]]]  # section -> [(measure, value)]

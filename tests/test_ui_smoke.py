@@ -269,7 +269,7 @@ def test_theme_switching_and_preference(qtbot):
     try:
         assert theme.apply_theme(app, "dark") == "dark"
         assert theme.COLORS["background"] == theme.THEMES["dark"]["background"]
-        assert app.palette().color(app.palette().ColorRole.Window).name() == "#2b2d31"
+        assert app.palette().color(app.palette().ColorRole.Window).name() == theme.UI["dark"]["window"]
     finally:
         theme.apply_theme(app, "light")  # other tests expect the light theme
     assert theme.THEMES["light"] == theme.COLORS
@@ -294,3 +294,70 @@ def test_alt_backspace_removes_boundary_not_undo(window, qtbot, wav):
     assert editor.doc.textgrid.tiers[0].boundaries == [pytest.approx(0.3)]
     shortcuts = {a.text(): [k.toString() for k in a.shortcuts()] for a in window.findChildren(QAction)}
     assert shortcuts["&Quit"] == ["Ctrl+Q"]
+
+
+def test_voicing_bar_and_tier(window, qtbot, tmp_path):
+    from phonolab.core.sound import Sound
+
+    x = np.concatenate([make_vowel(duration=0.3).mono, np.zeros(4800), make_vowel(duration=0.3).mono])
+    path = tmp_path / "vuv.wav"
+    Sound(x, 16000).save(path)
+    window.open_sound(str(path))
+    editor = window.editor
+    assert editor.layer_visible("voicing")  # on by default
+    qtbot.waitUntil(lambda: editor.voicing_bar.result is not None, timeout=15000)
+    assert len(editor.voicing_bar.result.starts) == 2
+    assert editor.readout(0.1, None)["Voicing"] == "voiced"
+    editor.add_voicing_tier()
+    tier = editor.doc.textgrid.tiers[-1]
+    assert tier.name == "voicing" and [iv.text for iv in tier.intervals][1:4] == ["V", "U", "V"]
+    editor.doc.undo_stack.undo()
+    assert editor.doc.textgrid.tiers == []
+
+
+def test_docks_hidden_on_start_page_and_restored(window, wav):
+    assert not window.info_panel.isVisible()  # start page
+    window.open_sound(str(wav))
+    assert window.info_panel.isVisible()
+    window.close_tab(0)
+    assert not window.info_panel.isVisible()
+    window.open_sound(str(wav))
+    assert window.info_panel.isVisible()
+
+
+def test_mac_delete_key_removes_boundary(window, qtbot, wav, monkeypatch):
+    window.open_sound(str(wav))
+    editor = window.editor
+    editor.doc.set_textgrid(TextGrid.for_duration(1.0, ["words"]))
+    view = editor.textgrid_view
+    view.setFocus()
+    editor.axis.set_cursor(0.3)
+    qtbot.keyClick(view, Qt.Key.Key_Return)
+    monkeypatch.setattr("phonolab.ui.editor.textgrid_pane.sys.platform", "win32")
+    qtbot.keyClick(view, Qt.Key.Key_Backspace)  # plain Backspace does nothing outside macOS
+    assert len(editor.doc.textgrid.tiers[0].boundaries) == 1
+    monkeypatch.setattr("phonolab.ui.editor.textgrid_pane.sys.platform", "darwin")
+    qtbot.keyClick(view, Qt.Key.Key_Backspace)
+    assert editor.doc.textgrid.tiers[0].boundaries == []
+
+
+def test_finder_file_open_event_opens_sound(window, wav):
+    from PyQt6.QtCore import QEvent
+
+    from phonolab.app import FileOpenFilter
+
+    class FakeFileOpenEvent:  # PyQt doesn't allow constructing a real QFileOpenEvent
+        def type(self):
+            return QEvent.Type.FileOpen
+
+        def file(self):
+            return str(wav)
+
+    assert FileOpenFilter(window).eventFilter(None, FakeFileOpenEvent())
+    assert window.tabs.count() == 1 and window.editor.doc.sound.name == "vowel"
+
+
+def test_queries_have_shortcuts_without_function_keys(window):
+    shortcuts = {a.text(): [k.toString() for k in a.shortcuts()] for a in window.findChildren(QAction)}
+    assert shortcuts["Get &pitch"] == ["F5", "Ctrl+1"]
+    assert "Ctrl+G" in shortcuts["Find &next"]

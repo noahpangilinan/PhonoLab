@@ -10,8 +10,8 @@ from PyQt6.QtWidgets import QDockWidget, QFormLayout, QGroupBox, QLabel, QVBoxLa
 from phonolab.core import queries
 from phonolab.core.queries import fmt
 
-READOUT_ROWS = ("Time", "Amplitude", "Frequency", "Pitch", "F1", "F2", "F3", "F4", "Intensity")
-SELECTION_ROWS = ("Start", "End", "Duration", "Mean pitch", "Mean F1", "Mean F2", "Mean intensity")
+READOUT_ROWS = ("Time", "Amplitude", "Frequency", "Pitch", "Voicing", "F1", "F2", "F3", "F4", "Intensity")
+SELECTION_ROWS = ("Start", "End", "Duration", "Voiced", "Mean pitch", "Mean F1", "Mean F2", "Mean intensity")
 
 
 class InfoPanel(QDockWidget):
@@ -106,6 +106,8 @@ class InfoPanel(QDockWidget):
             a, b = sel
             values = {"Start": f"{a:.4f} s", "End": f"{b:.4f} s", "Duration": f"{b - a:.4f} s"}
             res = e.manager.results
+            if "voicing" in res:
+                values["Voiced"] = f"{100 * res['voicing'].voiced_fraction(a, b):.0f} %"
             if "pitch" in res:
                 values["Mean pitch"] = fmt(queries.pitch_stats(res["pitch"], a, b).mean, "Hz", 1)
             if "formants" in res:

@@ -79,11 +79,11 @@ SHORTCUTS = [
     (
         "Measurements",
         [
-            ("F5", "Pitch at cursor or over selection"),
-            ("F1", "Formants"),
-            ("F8", "Intensity"),
-            ("F2", "Duration"),
-            ("F6", "Spectrum"),
+            ("F5 / Ctrl+1", "Pitch at cursor or over selection"),
+            ("F1 / Ctrl+2", "Formants"),
+            ("F8 / Ctrl+3", "Intensity"),
+            ("F2 / Ctrl+4", "Duration"),
+            ("F6 / Ctrl+5", "Spectrum"),
             ("Ctrl+M", "Manipulation"),
             ("Shift+Space", "Play resynthesis"),
             ("Ctrl+Shift+V", "Voice report"),
@@ -106,6 +106,8 @@ class MainWindow(QMainWindow):
         self.start_page = StartPage()
         self.start_page.open_requested.connect(self.open_dialog)
         self.start_page.open_path.connect(self.open_sound)
+        self.start_page.record_requested.connect(self.record)
+        self.start_page.batch_requested.connect(self.batch_measure)
         self.tabs = QTabWidget(documentMode=True, tabsClosable=True, movable=True)
         self.tabs.tabCloseRequested.connect(self.close_tab)
         self.tabs.currentChanged.connect(self._on_tab_changed)
@@ -129,6 +131,7 @@ class MainWindow(QMainWindow):
         self.statusBar().addPermanentWidget(self.busy_label)
         self._busy: set[str] = set()
         self.script_window: ScriptWindow | None = None
+        self._hidden_docks: list | None = None  # docks hidden while the start page shows
 
         self._editor_actions: list[QAction] = []
         self._textgrid_actions: list[QAction] = []
@@ -142,7 +145,11 @@ class MainWindow(QMainWindow):
             self.restoreGeometry(geometry)
         state = self.qsettings.value("window/state")
         if state is not None:
+            # restoreState sets each dock's visibility; record that layout afresh and hide it again,
+            # since the start page shows first. It comes back when a document opens.
             self.restoreState(state)
+            self._hidden_docks = None
+            self._show_docks(False)
 
     # ------------------------------------------------------------------ menus
 
@@ -226,8 +233,8 @@ class MainWindow(QMainWindow):
         self._action(
             m, "&Find label…", lambda: self.editor.find_bar.open_bar(), QKeySequence.StandardKey.Find, needs=tg
         )
-        self._action(m, "Find &next", lambda: self.editor.find_bar.step(1), "F3", needs=tg)
-        self._action(m, "Find &previous", lambda: self.editor.find_bar.step(-1), "Shift+F3", needs=tg)
+        self._action(m, "Find &next", lambda: self.editor.find_bar.step(1), ["F3", "Ctrl+G"], needs=tg)
+        self._action(m, "Find &previous", lambda: self.editor.find_bar.step(-1), ["Shift+F3", "Ctrl+Shift+G"], needs=tg)
 
         m = mb.addMenu("&View")
         self._action(m, "Zoom &in", lambda: self.editor.axis.zoom(0.5), ["Ctrl+=", "Ctrl++"], needs=e)
@@ -345,12 +352,12 @@ class MainWindow(QMainWindow):
         self._action(m, "Manipulation settings…", self._edit_manipulation_settings, needs=e)
 
         m = mb.addMenu("&Query")
-        self._action(m, "Get &pitch", lambda: self.editor.query_pitch(), "F5", needs=e)
-        self._action(m, "Get &formants", lambda: self.editor.query_formants(), "F1", needs=e)
-        self._action(m, "Get &intensity", lambda: self.editor.query_intensity(), "F8", needs=e)
-        self._action(m, "Get &duration", lambda: self.editor.query_duration(), "F2", needs=e)
+        self._action(m, "Get &pitch", lambda: self.editor.query_pitch(), ["F5", "Ctrl+1"], needs=e)
+        self._action(m, "Get &formants", lambda: self.editor.query_formants(), ["F1", "Ctrl+2"], needs=e)
+        self._action(m, "Get &intensity", lambda: self.editor.query_intensity(), ["F8", "Ctrl+3"], needs=e)
+        self._action(m, "Get &duration", lambda: self.editor.query_duration(), ["F2", "Ctrl+4"], needs=e)
         m.addSeparator()
-        self._action(m, "Spectral &slice / LTAS", self._show_spectrum, "F6", needs=e)
+        self._action(m, "Spectral &slice / LTAS", self._show_spectrum, ["F6", "Ctrl+5"], needs=e)
         self._action(m, "Spectral &moments", lambda: self._show_spectrum(log=True), needs=e)
         self._action(
             m,
@@ -375,6 +382,13 @@ class MainWindow(QMainWindow):
         self._action(m, "Add &point tier…", lambda: tv().add_tier("point"), needs=tg)
         self._action(m, "&Rename tier…", lambda: tv().rename_tier(), needs=tg)
         self._action(m, "D&uplicate tier", lambda: tv().duplicate_tier(), needs=tg)
+        self._action(
+            m,
+            "Add &voicing tier",
+            lambda: self.editor.add_voicing_tier(),
+            needs=e,
+            tip="A tier of voiced (V) and unvoiced (U) intervals from the glottal pulses",
+        )
         self._action(m, "Re&move tier…", lambda: tv().remove_tier(), needs=tg)
 
         m = mb.addMenu("&Tools")
@@ -405,6 +419,7 @@ class MainWindow(QMainWindow):
     def _on_tab_changed(self, _index=None):
         editor = self.editor
         self.stack.setCurrentWidget(self.tabs if editor else self.start_page)
+        self._show_docks(editor is not None)
         self.undo_group.setActiveStack(editor.doc.undo_stack if editor else None)
         self.info_panel.set_editor(editor)
         self.spectrum_panel.set_editor(editor)
@@ -413,6 +428,19 @@ class MainWindow(QMainWindow):
         self._update_busy()
         if editor:
             editor.setFocus()
+
+    def _show_docks(self, show: bool):
+        """Hide the docks on the start page (they'd be empty) and bring back the same ones later."""
+        docks = (self.info_panel, self.spectrum_panel, self.log_panel)
+        if not show and self._hidden_docks is None:
+            # isHidden(), not isVisible(): before the window is first shown nothing is "visible".
+            self._hidden_docks = [d for d in docks if not d.isHidden()]
+            for d in self._hidden_docks:
+                d.hide()
+        elif show and self._hidden_docks is not None:
+            for d in self._hidden_docks:
+                d.show()
+            self._hidden_docks = None
 
     def _update_actions(self):
         editor = self.editor
@@ -733,6 +761,7 @@ class MainWindow(QMainWindow):
         for editor in self.editors():
             editor.manager.close()
         self.qsettings.setValue("window/geometry", self.saveGeometry())
+        self._show_docks(True)  # save the user's dock layout, not the start page's
         self.qsettings.setValue("window/state", self.saveState())
         ev.accept()
 

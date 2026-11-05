@@ -8,7 +8,7 @@ help:
 	@echo "  make test    - Run tests"
 	@echo "  make lint    - Run linter (ruff)"
 	@echo "  make format  - Format code (ruff)"
-	@echo "  make package - Build a standalone app in dist/PhonoLab"
+	@echo "  make package - Build a single standalone dist/PhonoLab.exe"
 	@echo "  make clean   - Remove virtual environment"
 
 # First-time setup

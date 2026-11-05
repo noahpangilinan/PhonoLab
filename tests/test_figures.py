@@ -25,7 +25,7 @@ def test_all_panels_export(vowel, grid, tmp_path, ext):
     settings = FigureSettings(show_pitch_on_spectrogram=True, colour=True, dpi=100)
     req = FigureRequest(panels=figures.PANELS, start=0.1, end=0.9, figure=settings)
     fig = figures.make_figure(vowel, grid, req)
-    assert len(fig.axes) == 5  # four panels + the pitch axis twinned on the spectrogram
+    assert len(fig.axes) == 6  # five panels + the pitch axis twinned on the spectrogram
     path = tmp_path / f"fig.{ext}"
     figures.save_figure(fig, path, dpi=settings.dpi)
     assert path.stat().st_size > 1000

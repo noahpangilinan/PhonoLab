@@ -43,7 +43,7 @@ TextGrids are read and written in Praat's own formats, so you can move between P
 
 | Area | What you get |
 | --- | --- |
-| **Viewing** | Overview strip, multichannel waveform, spectrogram with pitch, formant and intensity overlays, glottal pulses, annotation tiers, all on one time axis |
+| **Viewing** | Overview strip, multichannel waveform, spectrogram with pitch, formant and intensity overlays, voicing bars, glottal pulses, annotation tiers, all on one time axis |
 | **Speed** | Analyses run in background processes, so the window never freezes. The waveform is drawn at screen resolution, and the spectrogram is recomputed for what you're looking at. Five-minute recordings stay smooth. |
 | **Annotation** | Interval and point tiers, boundary editing by keyboard or mouse, type-to-label, IPA chart, Praat backslash codes shown as IPA, search, undo/redo |
 | **Measurement** | Live readout under the mouse, selection statistics, pitch/formant/intensity queries, voice report (jitter, shimmer, HNR), spectral slice, LTAS, spectral moments, CPPS |
@@ -52,7 +52,7 @@ TextGrids are read and written in Praat's own formats, so you can move between P
 | **Sound operations** | Record, generate tones and noise, Klatt vowel synthesis, extract, resample, filter, scale, reverse, mono, concatenate |
 | **Automation** | Folder-wide batch measurement to CSV (whole files or per labelled interval), and a script window for Praat scripts or Python |
 | **Output** | Publication figures (PDF/SVG/PNG), CSV tables, audio export in five formats |
-| **Comfort** | Light and dark themes, recent files, settings that persist, prompts before unsaved work is lost, a crash log |
+| **Comfort** | A clean light-blue theme (and a dark one), a start page, recent files, settings that persist, prompts before unsaved work is lost, a crash log |
 
 ---
 
@@ -80,11 +80,29 @@ Without `make`, use `uv sync` and then `uv run phonolab`.
 ### Standalone app
 
 ```sh
-make package        # builds dist/PhonoLab/ with PyInstaller
+make package        # builds dist/PhonoLab.exe with PyInstaller
 ```
 
-The result is a self-contained folder (about 330 MB) containing `PhonoLab.exe` (or the platform
-equivalent) that runs without Python. Build on the platform you want to ship to.
+The result is a single file, `dist/PhonoLab.exe` (about 105 MB), that runs on any 64-bit Windows machine
+without Python. Copy it anywhere and double-click it. Building on macOS or Linux produces that platform's
+equivalent; PyInstaller can't cross-compile, so build on the platform you want to ship to.
+
+On each launch the exe unpacks itself to a temporary folder, so the window takes a few seconds to appear
+(about 6 s in testing); the folder is removed when PhonoLab closes. Without `make`, run
+`cd packaging && uv run pyinstaller --noconfirm --distpath ../dist --workpath ../build phonolab.spec`.
+
+### macOS (unsigned preview)
+
+macOS builds are made by GitHub Actions (`.github/workflows/mac-build.yml`) on every push, as disk images
+for Apple Silicon and Intel. Download one from the run's *Artifacts* section on the repository's Actions
+tab, open it, and drag PhonoLab to Applications. Apple Silicon needs macOS 14 or later.
+
+The app isn't signed by Apple yet, so macOS blocks it the first time. Try to open it, then go to
+*System Settings ▸ Privacy & Security* and choose **Open Anyway**. macOS asks for microphone permission
+the first time you record.
+
+On a Mac, Ctrl shortcuts in this guide use **Cmd**, and Alt means **Option**. The delete key removes a
+boundary. `make package` on a Mac builds `dist/PhonoLab.app`.
 
 ### Dependencies
 
@@ -124,6 +142,7 @@ Each open sound gets a tab. From top to bottom:
 | **Overview strip** | The whole recording, with a box marking the visible window. Click or drag to jump. |
 | **Waveform** | Every channel, stacked. It's drawn as a min/max envelope per screen pixel, so nothing aliases at any zoom level. Glottal pulses appear here as vertical marks when enabled. |
 | **Spectrogram** | Recomputed for the visible window, so zooming in sharpens it. Overlays: **pitch** (blue line, right axis in Hz), **formants** (red dots, hidden in silence), **intensity** (yellow line). |
+| **Voicing bar** | Voiced stretches as blue blocks, from Praat's voiced/unvoiced decision on the glottal pulses. Click a block (or a gap) to select it, then Space plays it. |
 | **Manipulation** | The editable pitch contour (*Manipulation ▸ Show manipulation*, Ctrl+M). Hidden by default. |
 | **Label field** | Edits the label of the selected interval or point. Its **IPA** button opens a clickable IPA chart. |
 | **Tiers** | One row per TextGrid tier, aligned with the panes above. |
@@ -144,8 +163,8 @@ Docked panels (rearrange or close them; *View* shows them again):
 | Wheel | Scroll |
 | Ctrl+wheel | Zoom around the mouse |
 
-**Layers** are toggled under *View* (waveform, spectrogram, pitch, formants, intensity, pulses,
-manipulation) and remembered between sessions. Hidden analyses aren't computed, so turning off what you
+**Layers** are toggled under *View* (waveform, spectrogram, pitch, formants, intensity, voicing,
+pulses, manipulation) and remembered between sessions. Hidden analyses aren't computed, so turning off what you
 don't need makes long files open faster.
 
 **Playback**: Space or Tab plays the selection. With no selection it plays from the cursor to the end of
@@ -178,6 +197,7 @@ PhonoLab warns when a TextGrid's duration differs from its sound.
 | Previous / next interval | Alt+Left / Alt+Right |
 | Change tier | Up / Down |
 | Tier management | Right-click a tier, or use the *Annotate* menu: add interval/point tier, rename, duplicate, move up/down, remove |
+| Voicing tier | *Annotate ▸ Add voicing tier* adds a tier of V (voiced) and U (unvoiced) intervals, as Praat's "To TextGrid (vuv)" makes |
 | Undo / redo | Ctrl+Z / Ctrl+Shift+Z (Ctrl+Y). A burst of typing undoes as one step. |
 
 ### IPA
@@ -203,9 +223,16 @@ Ctrl+F opens the find bar above the tiers:
 ### Live readout
 
 The *Measurements* panel shows values **under the mouse**: time, amplitude, the frequency under the
-pointer in the spectrogram, F0, F1–F4 and intensity. When the mouse isn't over a pane it shows values **at
-the cursor**. Below that it gives the selection's start, end and duration, with mean pitch, F1, F2 and
-intensity.
+pointer in the spectrogram, F0, voiced/unvoiced, F1–F4 and intensity. When the mouse isn't over a pane it
+shows values **at the cursor**. Below that it gives the selection's start, end and duration, the
+percentage of it that's voiced, and mean pitch, F1, F2 and intensity.
+
+### Voicing
+
+Voicing comes from Praat's own method: glottal pulses (*To PointProcess (cc)*, using the pitch settings),
+then *PointProcess ▸ To TextGrid (vuv)*. Two settings, under *Analysis ▸ Voicing settings…*, control it:
+the maximum period (0.02 s) and the mean period (0.01 s). It drives the voicing bar, the readout, the
+voiced percentage, the voicing tier and the figures' voicing panel.
 
 ### Queries (logged to *Results*)
 
@@ -386,7 +413,7 @@ Scripts run with your own permissions. Only run scripts you trust.
 
 *File ▸ Export ▸ Publication figure…* (Ctrl+P) composes a Praat-style picture with a live preview.
 
-- **Panels**: waveform, spectrogram, pitch contour, and TextGrid (choose which tiers to include).
+- **Panels**: waveform, spectrogram, pitch contour, voicing bar, and TextGrid (choose which tiers to include).
 - **Time range**: the selection, the visible window, or the whole sound.
 - **Spectrogram overlays**: formant dots, plus a pitch or intensity contour.
 - **Style**: width and per-panel height in inches, font size and family, greyscale (Praat's look) or
@@ -412,7 +439,7 @@ and has **Restore Defaults**, which returns it to the values below (Praat's, unl
 | Window length | 0.005 s (Gaussian, a broadband spectrogram) |
 | Dynamic range | 50 dB |
 | Time × frequency steps | 1000 × 250 |
-| Colour map | Grey (Praat), Viridis, Magma or Inferno |
+| Colour map | Grey (Praat), Blues, Viridis, Magma or Inferno |
 
 **Pitch**
 
@@ -450,6 +477,13 @@ and has **Restore Defaults**, which returns it to the values below (Praat's, unl
 | --- | --- |
 | Maximum period factor | 1.3 |
 | Maximum amplitude factor | 1.6 |
+
+**Voicing**
+
+| Setting | Default |
+| --- | --- |
+| Maximum period | 0.02 s |
+| Mean period | 0.01 s |
 
 **Spectrum** (PhonoLab defaults)
 
@@ -492,9 +526,9 @@ Changing these discards the current manipulation.
 | Delete / Alt+Backspace | Remove the boundary or point near the cursor |
 | Alt+Left / Alt+Right | Previous / next interval |
 | Up / Down | Previous / next tier |
-| Ctrl+F, F3 / Shift+F3 | Find labels, next / previous match |
-| F5 / F1 / F8 / F2 | Pitch / formants / intensity / duration |
-| F6 | Spectrum panel |
+| Ctrl+F, F3 / Shift+F3 (Ctrl+G / Ctrl+Shift+G) | Find labels, next / previous match |
+| F5 / F1 / F8 / F2 (Ctrl+1 / 2 / 3 / 4) | Pitch / formants / intensity / duration |
+| F6 (Ctrl+5) | Spectrum panel |
 | Ctrl+Shift+V | Voice report |
 | Ctrl+M | Show manipulation (Ctrl+click adds a pitch point) |
 | Ctrl+E | Extract the selection to a new tab |
@@ -519,13 +553,13 @@ in the label field always types; it never triggers shortcuts.
 | --- | --- |
 | **File** | Open sound, open recent, open TextGrid, new TextGrid, save TextGrid (as), Export ▸ (selection as WAV, pitch/formant/intensity/annotation tables as CSV, publication figure, view as PNG), batch measure, close, quit |
 | **Edit** | Undo, redo, select all, find label, find next / previous |
-| **View** | Zoom and scroll, show/hide each layer, Theme ▸ (System / Light / Dark), show/hide the panels |
+| **View** | Zoom and scroll, show/hide each layer (including voicing), Theme ▸ (System / Light / Dark), show/hide the panels |
 | **Play** | Play/stop, stop, play the whole sound |
 | **Sound** | Save sound as, record, new tone or noise, synthesize vowel, extract, mono, resample, filters, pre-emphasis, scale peak, reverse, concatenate |
-| **Analysis** | Settings for the spectrogram, pitch, formants, intensity, voice and spectrum |
+| **Analysis** | Settings for the spectrogram, pitch, formants, intensity, voice, voicing and spectrum |
 | **Manipulation** | Show, play resynthesis, open resynthesis, add/remove points, stylize, shift, flatten, set duration, reset, settings |
 | **Query** | Pitch, formants, intensity, duration, spectral slice/LTAS, spectral moments, CPPS, voice report |
-| **Annotate** | Add/remove a boundary at the cursor, previous/next interval, add interval/point tier, rename, duplicate, remove a tier |
+| **Annotate** | Add/remove a boundary at the cursor, previous/next interval, add interval/point tier, rename, duplicate, remove a tier, add voicing tier |
 | **Tools** | Script window, batch measure, figure |
 | **Help** | Keyboard shortcuts, About |
 
@@ -582,7 +616,7 @@ src/phonolab/
   core/              pure Python, no Qt: everything here is unit-tested and usable from scripts
     sound.py         Sound: samples (n × channels), loading (libsndfile → FFmpeg → Praat), saving
     analysis.py      Settings dataclasses (with UI metadata) and compute_* for spectrogram/pitch/formants/intensity
-    voice.py         Glottal pulses and Praat's voice report
+    voice.py         Glottal pulses, voiced/unvoiced stretches, Praat's voice report
     spectrum.py      Spectral slice, LTAS, spectral moments, CPPS
     queries.py       Values at a time, range statistics, slopes, bandwidths
     registry.py      Analyses the editor can show, and their dependencies (pulses depend on pitch)
@@ -599,9 +633,11 @@ src/phonolab/
     main_window.py   Tabs, menus, docks, file handling, dialogs
     document.py      Sound, TextGrid and manipulation, with one QUndoStack per document
     workers.py       Process pools; each sound's samples are shared with the workers through shared memory
-    editor/          TimeAxisController plus panes (waveform, spectrogram, manipulation, TextGrid, find bar)
+    editor/          TimeAxisController plus panes (waveform, spectrogram, manipulation, voicing bar, TextGrid, find bar)
     dialogs/         Settings forms (generated from the dataclasses), recording, batch, figure, new TextGrid
-    …                Measurements, spectrum and results panels, IPA chart, script window, theme
+    theme.py         Design tokens (light blue/white/grey; dark), the stylesheet and plot colours
+    icon.py          The app icon, drawn in code (packaging/make_icon.py writes the .ico)
+    …                Start page, measurements/spectrum/results panels, IPA chart, script window
 ```
 
 Key design decisions:
@@ -616,6 +652,8 @@ Key design decisions:
   undoing back to the saved state clears the `*`.
 - **Settings are dataclasses.** Their field metadata (label, unit, range, choices) generates the settings
   dialogs and their persistence.
+- **One set of design tokens.** Colours live in `ui/theme.py` as tokens; the stylesheet, the Qt palette
+  and every plot read from them, so a theme is a single table of colours.
 
 ---
 
@@ -626,7 +664,7 @@ make setup          # install, including dev tools (pytest, pytest-qt, ruff, sci
 make test           # the test suite, with Qt offscreen
 make lint           # ruff check
 make format         # ruff format
-make package        # PyInstaller build in dist/PhonoLab
+make package        # PyInstaller build: dist/PhonoLab.exe, or dist/PhonoLab.app on macOS
 ```
 
 About the tests:

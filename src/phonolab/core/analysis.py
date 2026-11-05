@@ -60,7 +60,9 @@ class SpectrogramSettings:
     dynamic_range: float = setting(50.0, "Dynamic range", "dB", 10.0, 120.0)
     time_steps: int = setting(1000, "Number of time steps", "", 50, 5000)
     frequency_steps: int = setting(250, "Number of frequency steps", "", 20, 1000)
-    colormap: str = setting("Grey (Praat)", "Colour map", choices=("Grey (Praat)", "Viridis", "Magma", "Inferno"))
+    colormap: str = setting(
+        "Grey (Praat)", "Colour map", choices=("Grey (Praat)", "Blues", "Viridis", "Magma", "Inferno")
+    )
 
 
 @dataclass(frozen=True)

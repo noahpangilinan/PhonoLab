@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFontDatabase
+from PyQt6.QtGui import QFont, QFontDatabase
 from PyQt6.QtWidgets import (
     QApplication,
     QDockWidget,
@@ -23,7 +23,12 @@ class LogPanel(QDockWidget):
         layout = QVBoxLayout(body)
         layout.setContentsMargins(4, 4, 4, 4)
         self.text = QPlainTextEdit(readOnly=True)
-        self.text.setFont(QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
+        mono = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
+        for family in ("Cascadia Mono", "Consolas", "Menlo", "DejaVu Sans Mono"):
+            if family in QFontDatabase.families():
+                mono = QFont(family, 10)
+                break
+        self.text.setFont(mono)
         self.text.setPlaceholderText("Query results appear here.\nTry F5 (pitch), F1 (formants) or F8 (intensity).")
         buttons = QHBoxLayout()
         copy = QPushButton("Copy all")

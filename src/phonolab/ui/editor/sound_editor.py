@@ -26,7 +26,7 @@ from phonolab.core.manipulation import ManipulationSettings
 from phonolab.core.queries import fmt
 from phonolab.core.settings import Preferences
 from phonolab.core.sound import Sound
-from phonolab.core.textgrid import IntervalTier, TextGridError
+from phonolab.core.textgrid import IntervalTier, TextGrid, TextGridError
 from phonolab.ui.document import Document
 from phonolab.ui.editor.base_pane import LEFT_AXIS_WIDTH, RIGHT_AXIS_WIDTH
 from phonolab.ui.editor.find_bar import FindBar
@@ -34,6 +34,7 @@ from phonolab.ui.editor.manipulation_pane import ManipulationPane
 from phonolab.ui.editor.spectrogram_pane import SpectrogramPane
 from phonolab.ui.editor.textgrid_pane import TextGridView
 from phonolab.ui.editor.time_axis import TimeAxisController
+from phonolab.ui.editor.voicing_bar import VoicingBar
 from phonolab.ui.editor.waveform_pane import Envelope, WaveformPane
 from phonolab.ui.ipa_palette import IpaPalette
 from phonolab.ui.manipulation import ManipulationState
@@ -41,11 +42,11 @@ from phonolab.ui.theme import COLORS
 from phonolab.ui.workers import AnalysisManager
 
 PLAYHEAD_INTERVAL_MS = 16
-LAYERS = ("waveform", "spectrogram", "pitch", "formants", "intensity", "pulses", "manipulation")
+LAYERS = ("waveform", "spectrogram", "pitch", "formants", "intensity", "voicing", "pulses", "manipulation")
 # Layers hidden until the user turns them on (like Praat, which hides pulses by default).
 HIDDEN_BY_DEFAULT = {"pulses", "manipulation"}
 # Layers whose visibility lives in preferences rather than in the spectrogram pane.
-STANDALONE_LAYERS = ("waveform", "pulses", "manipulation")
+STANDALONE_LAYERS = ("waveform", "voicing", "pulses", "manipulation")
 
 
 class _OverviewBox(pg.ViewBox):
@@ -166,6 +167,7 @@ class SoundEditor(QWidget):
         self.textgrid_view.item_selected.connect(self._sync_label_edit)
         self.textgrid_view.message.connect(self.message)
         self.textgrid_view.type_text.connect(self._type_into_label)
+        self.voicing_bar = VoicingBar(self.axis, self._plot_area)
         self.find_bar = FindBar(self.textgrid_view)
         self.find_bar.hide()
         self.find_bar.closed.connect(lambda: self.textgrid_view.setFocus())
@@ -176,10 +178,12 @@ class SoundEditor(QWidget):
         self.axis.view_changed.connect(self._sync_scrollbar)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(2)
+        self.setObjectName("editorPage")
+        layout.setContentsMargins(8, 6, 8, 4)
+        layout.setSpacing(4)
         layout.addWidget(self.overview)
         layout.addWidget(self.splitter, 1)
+        layout.addWidget(self.voicing_bar)
         layout.addWidget(self.find_bar)
         layout.addWidget(self.label_row)
         layout.addWidget(self.textgrid_view)
@@ -225,6 +229,9 @@ class SoundEditor(QWidget):
         elif name == "pulses":
             self.waveform.set_pulses_visible(visible)
             self.manager.set_enabled("pulses", visible)
+        elif name == "voicing":
+            self.voicing_bar.setVisible(visible)
+            self.manager.set_enabled("voicing", visible)
         elif name == "manipulation":
             self.manipulation_pane.setVisible(visible)
             if visible:
@@ -237,6 +244,8 @@ class SoundEditor(QWidget):
     def _on_result(self, name: str):
         if name == "pulses":
             self.waveform.set_pulses(self.manager.results["pulses"].times)
+        elif name == "voicing":
+            self.voicing_bar.set_result(self.manager.results["voicing"])
 
     def layer_visible(self, name: str) -> bool:
         if name in STANDALONE_LAYERS:
@@ -247,6 +256,27 @@ class SoundEditor(QWidget):
         self.prefs.set_analysis_settings(name, settings)
         self.manager.update_settings(name, settings)
         self.spectrogram.apply_settings()
+        if "voicing" not in self.manager.results:  # pitch or voicing settings changed: recomputing
+            self.voicing_bar.set_result(None)
+
+    def add_voicing_tier(self):
+        """Add a "voicing" interval tier with Praat-style V/U labels (one undoable step)."""
+        doc = self.doc
+        if doc.textgrid is None:
+            doc.set_textgrid(TextGrid.for_duration(doc.sound.duration, ()), saved=False)
+        r = self.result("voicing")
+
+        def add(tg):
+            tier = IntervalTier("voicing", tg.xmin, tg.xmax)
+            for a, b in zip(r.starts, r.ends, strict=True):
+                for t in (a, b):
+                    if tg.xmin < t < tg.xmax and t not in tier.boundaries:
+                        tier.add_boundary(t)
+            for iv in tier.intervals:
+                iv.text = "V" if r.voiced_at((iv.xmin + iv.xmax) / 2) else "U"
+            tg.tiers.append(tier)
+
+        doc.edit("Add voicing tier", add)
 
     # ------------------------------------------------------------------ manipulation
 
@@ -459,6 +489,8 @@ class SoundEditor(QWidget):
             pane.set_playhead(t)
         self.textgrid_view.playhead = t
         self.textgrid_view.update()
+        self.voicing_bar.playhead = t
+        self.voicing_bar.update()
 
     # ------------------------------------------------------------------ queries
 
@@ -550,6 +582,8 @@ class SoundEditor(QWidget):
         if "formants" in res:
             for i, v in enumerate(queries.formants_at(res["formants"], t)[:4]):
                 out[f"F{i + 1}"] = fmt(v, "Hz", 0)
+        if "voicing" in res:
+            out["Voicing"] = "voiced" if res["voicing"].voiced_at(t) else "unvoiced"
         out["Intensity"] = fmt(queries.intensity_at(res["intensity"], t), "dB", 1) if "intensity" in res else "…"
         return out
 
