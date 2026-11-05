@@ -151,10 +151,9 @@ def apply_theme(app, choice: str = "system") -> str:
 
 def _ui_font(app) -> QFont:
     font = QFont(app.font())
-    family = {"win32": "Segoe UI", "darwin": ".AppleSystemUIFont"}.get(sys.platform)
-    if family:
-        font.setFamily(family)
-    font.setPointSizeF(9.5 if sys.platform == "win32" else font.pointSizeF())
+    if sys.platform == "win32":  # macOS and Linux already default to their system font
+        font.setFamily("Segoe UI")
+        font.setPointSizeF(9.5)
     return font
 
 

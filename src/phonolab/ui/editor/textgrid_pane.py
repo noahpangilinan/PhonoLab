@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import bisect
+import sys
 from copy import deepcopy
 
 from PyQt6.QtCore import QPointF, QRectF, Qt, pyqtSignal
@@ -450,7 +451,10 @@ class TextGridView(QWidget):
         key, mods = ev.key(), ev.modifiers()
         if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             self.add_at_cursor()
-        elif key == Qt.Key.Key_Delete or (key == Qt.Key.Key_Backspace and mods & Qt.KeyboardModifier.AltModifier):
+        elif key == Qt.Key.Key_Delete or (
+            # The key labelled "delete" on a Mac sends Backspace.
+            key == Qt.Key.Key_Backspace and (sys.platform == "darwin" or mods & Qt.KeyboardModifier.AltModifier)
+        ):
             self.remove_near_cursor()
         elif key == Qt.Key.Key_Up and self.selected_tier > 0:
             self.selected_tier -= 1

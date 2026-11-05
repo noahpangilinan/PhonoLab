@@ -79,11 +79,11 @@ SHORTCUTS = [
     (
         "Measurements",
         [
-            ("F5", "Pitch at cursor or over selection"),
-            ("F1", "Formants"),
-            ("F8", "Intensity"),
-            ("F2", "Duration"),
-            ("F6", "Spectrum"),
+            ("F5 / Ctrl+1", "Pitch at cursor or over selection"),
+            ("F1 / Ctrl+2", "Formants"),
+            ("F8 / Ctrl+3", "Intensity"),
+            ("F2 / Ctrl+4", "Duration"),
+            ("F6 / Ctrl+5", "Spectrum"),
             ("Ctrl+M", "Manipulation"),
             ("Shift+Space", "Play resynthesis"),
             ("Ctrl+Shift+V", "Voice report"),
@@ -233,8 +233,8 @@ class MainWindow(QMainWindow):
         self._action(
             m, "&Find label…", lambda: self.editor.find_bar.open_bar(), QKeySequence.StandardKey.Find, needs=tg
         )
-        self._action(m, "Find &next", lambda: self.editor.find_bar.step(1), "F3", needs=tg)
-        self._action(m, "Find &previous", lambda: self.editor.find_bar.step(-1), "Shift+F3", needs=tg)
+        self._action(m, "Find &next", lambda: self.editor.find_bar.step(1), ["F3", "Ctrl+G"], needs=tg)
+        self._action(m, "Find &previous", lambda: self.editor.find_bar.step(-1), ["Shift+F3", "Ctrl+Shift+G"], needs=tg)
 
         m = mb.addMenu("&View")
         self._action(m, "Zoom &in", lambda: self.editor.axis.zoom(0.5), ["Ctrl+=", "Ctrl++"], needs=e)
@@ -352,12 +352,12 @@ class MainWindow(QMainWindow):
         self._action(m, "Manipulation settings…", self._edit_manipulation_settings, needs=e)
 
         m = mb.addMenu("&Query")
-        self._action(m, "Get &pitch", lambda: self.editor.query_pitch(), "F5", needs=e)
-        self._action(m, "Get &formants", lambda: self.editor.query_formants(), "F1", needs=e)
-        self._action(m, "Get &intensity", lambda: self.editor.query_intensity(), "F8", needs=e)
-        self._action(m, "Get &duration", lambda: self.editor.query_duration(), "F2", needs=e)
+        self._action(m, "Get &pitch", lambda: self.editor.query_pitch(), ["F5", "Ctrl+1"], needs=e)
+        self._action(m, "Get &formants", lambda: self.editor.query_formants(), ["F1", "Ctrl+2"], needs=e)
+        self._action(m, "Get &intensity", lambda: self.editor.query_intensity(), ["F8", "Ctrl+3"], needs=e)
+        self._action(m, "Get &duration", lambda: self.editor.query_duration(), ["F2", "Ctrl+4"], needs=e)
         m.addSeparator()
-        self._action(m, "Spectral &slice / LTAS", self._show_spectrum, "F6", needs=e)
+        self._action(m, "Spectral &slice / LTAS", self._show_spectrum, ["F6", "Ctrl+5"], needs=e)
         self._action(m, "Spectral &moments", lambda: self._show_spectrum(log=True), needs=e)
         self._action(
             m,

@@ -9,7 +9,7 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 import platformdirs
-from PyQt6.QtCore import QSettings
+from PyQt6.QtCore import QEvent, QObject, QSettings
 from PyQt6.QtWidgets import QApplication, QMessageBox
 
 from phonolab import __version__
@@ -48,6 +48,20 @@ def _install_excepthook(log_file: Path) -> None:
     sys.excepthook = hook
 
 
+class FileOpenFilter(QObject):
+    """Opens files sent by macOS (double-click in Finder, drop on the Dock icon)."""
+
+    def __init__(self, window, parent=None):
+        super().__init__(parent)
+        self.window = window
+
+    def eventFilter(self, obj, ev):  # noqa: N802
+        if ev.type() == QEvent.Type.FileOpen:
+            self.window.open_path(ev.file())
+            return True
+        return super().eventFilter(obj, ev)
+
+
 def create_app(argv: list[str]) -> QApplication:
     app = QApplication.instance() or QApplication(argv)
     app.setApplicationName("PhonoLab")
@@ -71,6 +85,8 @@ def run(argv: list[str] | None = None) -> int:
 
     workers.warm_up()
     window = MainWindow()
+    file_open_filter = FileOpenFilter(window, app)
+    app.installEventFilter(file_open_filter)
     window.show()
     for path in argv[1:]:
         window.open_path(path)
