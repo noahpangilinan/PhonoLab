@@ -159,6 +159,8 @@ class SoundEditor(QWidget):
 
         self.overview = OverviewStrip(self.axis, sound)
         self.waveform = WaveformPane(self.axis, sound)
+        self.manager.corrections = doc.corrections
+        doc.corrections_changed.connect(lambda: self.manager.set_corrections(doc.corrections))
         self.manager.result_ready.connect(self._on_result)
         self.manager.window_changed.connect(self._on_window_changed)
         self.spectrogram = SpectrogramPane(self.axis, self.manager)
@@ -588,6 +590,35 @@ class SoundEditor(QWidget):
             return self.manager.compute_now(name)
         return self.manager.results[name]
 
+    # ------------------------------------------------------------------ corrections
+
+    def _selected_stretch(self) -> tuple[float, float] | None:
+        if self.axis.selection is None:
+            self.message.emit("Select the stretch to correct first")
+        return self.axis.selection
+
+    def correct_unvoice(self):
+        if span := self._selected_stretch():
+            self.doc.correct("Unvoice", self.doc.corrections.with_unvoiced(*span))
+
+    def correct_octave(self, factor: float):
+        if span := self._selected_stretch():
+            direction = "up" if factor > 1 else "down"
+            self.doc.correct(f"Octave {direction}", self.doc.corrections.with_octave(*span, factor))
+
+    def correct_remove_pulses(self):
+        if span := self._selected_stretch():
+            self.doc.correct("Remove pulses", self.doc.corrections.with_pulses_removed(*span))
+
+    def correct_add_pulse(self):
+        self.doc.correct("Add pulse", self.doc.corrections.with_pulse(self.axis.cursor))
+
+    def correct_restore(self):
+        """Undo every correction touching the selection, or all of them with no selection."""
+        c = self.doc.corrections
+        span = self.axis.selection
+        self.doc.correct("Restore analysis", c.without_range(*span) if span else type(c)())
+
     def _check_coverage(self):
         """Long sounds: refuse rather than report statistics over part of what was asked for."""
         start, end = self.axis.selection or (self.axis.cursor, self.axis.cursor)
@@ -657,8 +688,9 @@ class SoundEditor(QWidget):
         """Praat's voice report over the selection (or the visible window)."""
         start, end = self.axis.selection or self.axis.view
         report = voice.voice_report(
-            self.doc.sound, self.manager.settings["pitch"], self.manager.settings["pulses"], start, end
-        )
+            self.doc.sound, self.manager.settings["pitch"], self.manager.settings["pulses"], start, end,
+            self.doc.corrections,
+        )  # fmt: skip
         header = f"Voice report for {self.doc.sound.name}, {start:.4f}–{end:.4f} s:"
         self.log.emit(f"{header}\n{report.text.rstrip()}\n")
         return report

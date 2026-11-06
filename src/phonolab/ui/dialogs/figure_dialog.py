@@ -145,7 +145,7 @@ class FigureDialog(QDialog):
         m = self.editor.manager.settings
         return FigureRequest(
             panels, start, end, tiers, self.form.value(),
-            m["spectrogram"], m["pitch"], m["formants"], m["intensity"],
+            m["spectrogram"], m["pitch"], m["formants"], m["intensity"], self.editor.doc.corrections,
         )  # fmt: skip
 
     def settings(self) -> FigureSettings:

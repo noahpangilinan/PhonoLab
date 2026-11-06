@@ -525,3 +525,51 @@ def test_views_panel_shows_a_view_and_limits_range(window, qtbot, wav):
         qtbot.waitUntil(lambda: panel.result is not None, timeout=20000)
         assert panel.image.image is not None and panel.status.text().startswith("Cepstrogram")
     panel.retheme()
+
+
+def test_correcting_pitch_reaches_queries_undo_and_saving(window, qtbot, wav):
+    from phonolab.core.corrections import Corrections
+
+    window.open_sound(str(wav))
+    editor = window.editor
+    doc = editor.doc
+    qtbot.waitUntil(lambda: "pitch" in editor.manager.results, timeout=15000)
+    before = np.nanmedian(editor.manager.results["pitch"].frequencies)
+    editor.axis.set_selection(0.0, 1.0)
+    editor.correct_octave(2.0)
+    assert np.nanmedian(editor.manager.results["pitch"].frequencies) == pytest.approx(2 * before)
+    assert doc.corrections_dirty and doc.title.endswith("*")
+    assert len(editor.spectrogram.raw_pitch_curve.getData()[0]) > 0  # the original stays visible
+    editor.query_pitch()
+    assert str(int(2 * before)) in window.log_panel.text.toPlainText()
+    doc.undo_stack.undo()
+    assert np.nanmedian(editor.manager.results["pitch"].frequencies) == pytest.approx(before)
+    assert not doc.corrections_dirty
+    doc.undo_stack.redo()
+    assert window.save_corrections()
+    assert not doc.corrections_dirty and Corrections.path_for(wav).exists()
+    window.close_tab(0)
+    window.open_sound(str(wav))  # corrections come back
+    editor = window.editor
+    qtbot.waitUntil(lambda: "pitch" in editor.manager.results, timeout=15000)
+    assert np.nanmedian(editor.manager.results["pitch"].frequencies) == pytest.approx(2 * before)
+    editor.axis.clear_selection()
+    editor.correct_restore()
+    assert window.save_corrections() and not Corrections.path_for(wav).exists()
+
+
+def test_correcting_needs_a_selection_and_prompts_on_close(window, wav, monkeypatch):
+    window.open_sound(str(wav))
+    editor = window.editor
+    messages = []
+    editor.message.connect(messages.append)
+    editor.correct_unvoice()
+    assert editor.doc.corrections.is_empty and "Select" in messages[-1]
+    editor.axis.set_selection(0.2, 0.3)
+    editor.correct_unvoice()
+    asked = []
+    monkeypatch.setattr(
+        QMessageBox, "question", lambda *a, **k: asked.append(a[1]) or QMessageBox.StandardButton.Discard
+    )
+    window.close_tab(0)
+    assert asked == ["Unsaved corrections"]

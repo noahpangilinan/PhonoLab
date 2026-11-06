@@ -22,22 +22,23 @@ TextGrids are read and written in Praat's own formats, so you can move between P
 4. [The editor](#the-editor)
 5. [Annotation (TextGrids)](#annotation-textgrids)
 6. [Measurements and queries](#measurements-and-queries)
-7. [Long recordings](#long-recordings)
-8. [Manipulation (PSOLA)](#manipulation-psola)
-9. [Sound operations, recording and synthesis](#sound-operations-recording-and-synthesis)
-10. [Batch measurement](#batch-measurement)
-11. [Scripting (Praat and Python)](#scripting-praat-and-python)
-12. [Publication figures](#publication-figures)
-13. [Analysis settings and defaults](#analysis-settings-and-defaults)
-14. [Keyboard shortcuts](#keyboard-shortcuts)
-15. [Menu reference](#menu-reference)
-16. [How results relate to Praat](#how-results-relate-to-praat)
-17. [Files, formats and preferences](#files-formats-and-preferences)
-18. [Architecture](#architecture)
-19. [Development](#development)
-20. [Troubleshooting](#troubleshooting)
-21. [Not yet covered](#not-yet-covered)
-22. [License](#license)
+7. [Correcting analyses](#correcting-analyses)
+8. [Long recordings](#long-recordings)
+9. [Manipulation (PSOLA)](#manipulation-psola)
+10. [Sound operations, recording and synthesis](#sound-operations-recording-and-synthesis)
+11. [Batch measurement](#batch-measurement)
+12. [Scripting (Praat and Python)](#scripting-praat-and-python)
+13. [Publication figures](#publication-figures)
+14. [Analysis settings and defaults](#analysis-settings-and-defaults)
+15. [Keyboard shortcuts](#keyboard-shortcuts)
+16. [Menu reference](#menu-reference)
+17. [How results relate to Praat](#how-results-relate-to-praat)
+18. [Files, formats and preferences](#files-formats-and-preferences)
+19. [Architecture](#architecture)
+20. [Development](#development)
+21. [Troubleshooting](#troubleshooting)
+22. [Not yet covered](#not-yet-covered)
+23. [License](#license)
 
 ---
 
@@ -289,6 +290,26 @@ and amplitude factors).
 - **Measure CPPS** logs the smoothed cepstral peak prominence using Praat's standard parameters (see below).
 
 ---
+
+## Correcting analyses
+
+The *Correct* menu fixes what an analysis got wrong, and the fix then applies everywhere: the display, queries,
+the voice report, tables, batch measurement and figures.
+
+| Correction | How |
+| --- | --- |
+| Unvoice a stretch | Select it, then Ctrl+U: no pitch or pulses there |
+| Fix an octave error | Select it, then Ctrl+Up or Ctrl+Down |
+| Remove pulses | Select the stretch, then *Remove pulses in selection* |
+| Add a pulse | Put the cursor there, then *Add pulse at cursor* |
+| Undo | Ctrl+Z, or *Restore analysis* to clear a stretch (or everything, with nothing selected) |
+
+The original pitch stays visible as a dashed line. Corrections are edits over time ranges, so they survive
+changing the analysis settings. *Save corrections* (Ctrl+Alt+C) writes `name.corrections.json` next to the
+sound; it loads when the sound opens, and batch measurement uses it too, marking those rows `corrected`.
+
+The voice report's period range is fixed, so choosing your own (*Analysis ▸ Voice settings*) adds extra jitter
+and shimmer lines for it.
 
 ## Long recordings
 

@@ -14,6 +14,7 @@ import logging
 import multiprocessing as mp
 from collections import OrderedDict
 from concurrent.futures import Future, ProcessPoolExecutor
+from dataclasses import replace
 from multiprocessing import shared_memory
 
 import numpy as np
@@ -21,10 +22,12 @@ from PyQt6.QtCore import QObject, pyqtSignal
 
 from phonolab.core import registry
 from phonolab.core.analysis import shift_times
+from phonolab.core.corrections import Corrections
 from phonolab.core.sound import MAX_WINDOW_SECONDS, LongSoundError, Sound
 
 log = logging.getLogger(__name__)
 
+CORRECTED = {"pitch", "pulses", "voicing"}  # analyses that hand corrections change
 ZOOM_HINT = f"Zoom in to {MAX_WINDOW_SECONDS:.0f} seconds or less to see analyses"
 
 # ---------------------------------------------------------------- worker process side
@@ -155,7 +158,9 @@ class AnalysisManager(QObject):
         super().__init__(parent)
         self.sound = sound
         self.settings = dict(settings)
-        self.results: dict[str, object] = {}
+        self.results: dict[str, object] = {}  # what the rest of the app sees, with corrections applied
+        self.raw_results: dict[str, object] = {}
+        self.corrections = Corrections()
         self.enabled: set[str] = set()
         self._tokens: dict[str, int] = {}
         self._futures: dict[str, Future] = {}
@@ -190,6 +195,25 @@ class AnalysisManager(QObject):
         window = self.analysis_window
         return window is not None and window[0] <= start and end <= window[1]
 
+    def set_corrections(self, corrections: Corrections) -> None:
+        """Apply new corrections to existing results; no need to re-analyse."""
+        self.corrections = corrections
+        for name in CORRECTED & set(self.raw_results):
+            self._store(name, self.raw_results[name])
+            self.result_ready.emit(name)
+
+    def _store(self, name: str, raw) -> None:
+        self.raw_results[name] = raw
+        c = self.corrections
+        if name == "pitch":
+            self.results[name] = c.apply_pitch(raw)
+        elif name == "pulses":
+            self.results[name] = replace(raw, times=c.apply_pulses(raw.times))
+        elif name == "voicing":
+            self.results[name] = c.apply_voicing(raw)
+        else:
+            self.results[name] = raw
+
     def set_enabled(self, name: str, enabled: bool) -> None:
         if enabled:
             self.enabled.add(name)
@@ -202,6 +226,7 @@ class AnalysisManager(QObject):
         self.settings[name] = settings
         for affected in (name, *registry.dependents(name)):
             self.results.pop(affected, None)
+            self.raw_results.pop(affected, None)
             if affected in self.enabled:
                 self.request(affected)
 
@@ -221,6 +246,7 @@ class AnalysisManager(QObject):
                 for name in self.enabled | set(self.results):
                     self._tokens[name] = self._tokens.get(name, 0) + 1  # drop anything still running
                 self.results.clear()
+                self.raw_results.clear()
                 self.window_changed.emit(False)
             return
         if self.covers(start, end):
@@ -232,6 +258,7 @@ class AnalysisManager(QObject):
             self.window_changed.emit(True)
         # Results from the old window must not answer for this one, even while the new ones are computing.
         self.results = {k: v for k, v in self.results.items() if k == "spectrogram"}
+        self.raw_results = {k: v for k, v in self.raw_results.items() if k == "spectrogram"}
         for name in self.enabled - {"spectrogram"}:
             self.request(name)
 
@@ -326,15 +353,15 @@ class AnalysisManager(QObject):
                 raise LongSoundError(ZOOM_HINT)
             start, end = self.analysis_window
             part = self.sound.extract(start, end)
-            self.results[name] = shift_times(registry.compute(name, part, self.settings), start)
+            self._store(name, shift_times(registry.compute(name, part, self.settings), start))
         else:
-            self.results[name] = registry.compute(name, self.sound, self.settings)
+            self._store(name, registry.compute(name, self.sound, self.settings))
         return self.results[name]
 
     def _on_done(self, name: str, token: int, result):
         if token != self._tokens.get(name):
             return  # superseded by a newer request
-        self.results[name] = result
+        self._store(name, result)
         self.busy_changed.emit(name, False)
         self.result_ready.emit(name)
 

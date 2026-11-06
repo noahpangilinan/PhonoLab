@@ -7,6 +7,7 @@ from pathlib import Path
 from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtGui import QUndoCommand, QUndoStack
 
+from phonolab.core.corrections import Corrections
 from phonolab.core.sound import Sound
 from phonolab.core.textgrid import TextGrid, TextGridError
 
@@ -15,6 +16,7 @@ class Document(QObject):
     # Emitted after any TextGrid mutation (including undo/redo and replacement).
     textgrid_changed = pyqtSignal()
     title_changed = pyqtSignal(str)
+    corrections_changed = pyqtSignal()
 
     def __init__(self, sound: Sound, parent=None):
         super().__init__(parent)
@@ -23,6 +25,8 @@ class Document(QObject):
         self.textgrid_path: Path | None = None
         self._saved_textgrid: TextGrid | None = None  # as last loaded/saved; None = never saved
         self.manipulation = None  # ManipulationState once the user opens manipulation
+        self.corrections = Corrections.load_for(sound.path)
+        self._saved_corrections = self.corrections
         # One undo history per document, shared by annotation and pitch/duration edits.
         self.undo_stack = QUndoStack(self)
         self.textgrid_changed.connect(lambda: self.title_changed.emit(self.title))
@@ -33,7 +37,32 @@ class Document(QObject):
 
     @property
     def is_dirty(self) -> bool:
-        return self.textgrid_dirty or self.sound_unsaved
+        return self.textgrid_dirty or self.sound_unsaved or self.corrections_dirty
+
+    @property
+    def corrections_dirty(self) -> bool:
+        return self.corrections != self._saved_corrections
+
+    def correct(self, description: str, corrections: Corrections) -> None:
+        """Change the corrections as one undoable step."""
+        if corrections != self.corrections:
+            self.undo_stack.push(_CorrectionsCommand(self, description, self.corrections, corrections))
+
+    def _set_corrections(self, corrections: Corrections) -> None:
+        self.corrections = corrections
+        self.corrections_changed.emit()
+        self.title_changed.emit(self.title)
+
+    def save_corrections(self) -> Path:
+        """Save next to the sound (or delete the file if nothing is corrected any more)."""
+        path = Corrections.path_for(self.sound.path)
+        if self.corrections.is_empty:
+            path.unlink(missing_ok=True)
+        else:
+            self.corrections.save(path)
+        self._saved_corrections = self.corrections
+        self.title_changed.emit(self.title)
+        return path
 
     @property
     def textgrid_dirty(self) -> bool:
@@ -89,6 +118,18 @@ class Document(QObject):
         old = t.get_text(index)
         if old != text:
             self.undo_stack.push(_SetLabelCommand(self, tier, index, old, text))
+
+
+class _CorrectionsCommand(QUndoCommand):
+    def __init__(self, doc: Document, text: str, before: Corrections, after: Corrections):
+        super().__init__(text)
+        self.doc, self.before, self.after = doc, before, after
+
+    def redo(self):
+        self.doc._set_corrections(self.after)
+
+    def undo(self):
+        self.doc._set_corrections(self.before)
 
 
 class _SnapshotCommand(QUndoCommand):

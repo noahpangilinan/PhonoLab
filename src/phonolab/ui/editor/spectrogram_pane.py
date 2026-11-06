@@ -55,6 +55,11 @@ class SpectrogramPane(TimePane):
         # Thick pens are slow to rasterise: only draw what is visible, downsampled to the screen.
         curve_opts = {"connect": "finite", "clipToView": True, "autoDownsample": True, "downsampleMethod": "subsample"}
         self.pitch_curve = pg.PlotDataItem(pen=pg.mkPen(COLORS["pitch"], width=3), **curve_opts)
+        # The analysis as it was, shown behind the pitch curve wherever a correction changes it.
+        self.raw_pitch_curve = pg.PlotDataItem(
+            pen=pg.mkPen(COLORS["muted"], width=1, style=Qt.PenStyle.DashLine), **curve_opts
+        )
+        self.pitch_vb.addItem(self.raw_pitch_curve)
         self.pitch_vb.addItem(self.pitch_curve)
         self.intensity_vb = self._add_overlay()
         self.intensity_curve = pg.PlotDataItem(pen=pg.mkPen(COLORS["intensity"], width=2), **curve_opts)
@@ -106,6 +111,7 @@ class SpectrogramPane(TimePane):
         if not available:
             self.image.clear()
             self.pitch_curve.setData([], [])
+            self.raw_pitch_curve.setData([], [])
             self.intensity_curve.setData([], [])
             self._formant_xy = (np.zeros(0), np.zeros(0))
             self._update_formant_dots()
@@ -120,6 +126,7 @@ class SpectrogramPane(TimePane):
         self.hint.setColor(COLORS["muted"])
         self.formant_dots.setBrush(pg.mkBrush(COLORS["formant"]))
         self.pitch_curve.setPen(pg.mkPen(COLORS["pitch"], width=3))
+        self.raw_pitch_curve.setPen(pg.mkPen(COLORS["muted"], width=1, style=Qt.PenStyle.DashLine))
         self.intensity_curve.setPen(pg.mkPen(COLORS["intensity"], width=2))
         self.apply_settings()  # rebuilds the colour map and the coloured right-axis label
 
@@ -185,6 +192,11 @@ class SpectrogramPane(TimePane):
 
     def _show_pitch(self, r: PitchResult):
         self.pitch_curve.setData(r.times, r.frequencies)
+        raw = self.manager.raw_results.get("pitch")
+        if raw is not None and not self.manager.corrections.is_empty:
+            self.raw_pitch_curve.setData(raw.times, raw.frequencies)
+        else:
+            self.raw_pitch_curve.setData([], [])
 
     def _show_formants(self, r: FormantResult):
         s = self.manager.settings["formants"]

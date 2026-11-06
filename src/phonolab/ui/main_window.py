@@ -388,6 +388,39 @@ class MainWindow(QMainWindow):
         m.addSeparator()
         self._action(m, "Manipulation settings…", self._edit_manipulation_settings, needs=e)
 
+        m = mb.addMenu("&Correct")
+        self._action(
+            m,
+            "&Unvoice selection",
+            lambda: self.editor.correct_unvoice(),
+            "Ctrl+U",
+            needs=e,
+            tip="Mark the selected stretch as having no pitch or pulses",
+        )
+        self._action(m, "Pitch octave &up in selection", lambda: self.editor.correct_octave(2.0), "Ctrl+Up", needs=e)
+        self._action(
+            m, "Pitch octave &down in selection", lambda: self.editor.correct_octave(0.5), "Ctrl+Down", needs=e
+        )
+        m.addSeparator()
+        self._action(m, "&Remove pulses in selection", lambda: self.editor.correct_remove_pulses(), needs=e)
+        self._action(m, "&Add pulse at cursor", lambda: self.editor.correct_add_pulse(), needs=e)
+        m.addSeparator()
+        self._action(
+            m,
+            "Restore &analysis",
+            lambda: self.editor.correct_restore(),
+            needs=e,
+            tip="Remove corrections in the selection, or all of them with nothing selected",
+        )
+        self._action(
+            m,
+            "&Save corrections",
+            self.save_corrections,
+            "Ctrl+Alt+C",
+            needs=e,
+            tip="Saved next to the sound and loaded again when it opens",
+        )
+
         m = mb.addMenu("&Query")
         self._action(m, "Get &pitch", lambda: self.editor.query_pitch(), ["F5", "Ctrl+1"], needs=e)
         self._action(m, "Get &formants", lambda: self.editor.query_formants(), ["F1", "Ctrl+2"], needs=e)
@@ -800,6 +833,13 @@ class MainWindow(QMainWindow):
             )  # fmt: skip
             if answer == buttons.Cancel or (answer == buttons.Save and not self.save_sound_as(editor)):
                 return False
+        if editor.doc.corrections_dirty:
+            answer = QMessageBox.question(
+                self, "Unsaved corrections", f"Save your corrections to “{editor.doc.sound.name}”?",
+                buttons.Save | buttons.Discard | buttons.Cancel,
+            )  # fmt: skip
+            if answer == buttons.Cancel or (answer == buttons.Save and not self.save_corrections(editor)):
+                return False
         if not editor.doc.textgrid_dirty:
             return True
         answer = QMessageBox.question(
@@ -940,6 +980,18 @@ class MainWindow(QMainWindow):
         self.script_window.show()
         self.script_window.raise_()
         self.script_window.activateWindow()
+
+    def save_corrections(self, editor: SoundEditor | None = None) -> bool:
+        editor = editor or self.editor
+        if editor.doc.sound.path is None and not self.save_sound_as(editor):
+            return False  # corrections live next to the sound, so it needs a file first
+        try:
+            path = editor.doc.save_corrections()
+        except OSError as err:
+            QMessageBox.warning(self, "Could not save corrections", str(err))
+            return False
+        self.show_message(f"Saved {path.name}")
+        return True
 
     def _on_script_result(self, result, editor):
         for name, samples, sr in result.sounds:

@@ -19,6 +19,7 @@ from phonolab.core.analysis import (  # noqa: E402
     SpectrogramSettings,
     setting,
 )
+from phonolab.core.corrections import Corrections  # noqa: E402
 from phonolab.core.ipa import to_unicode  # noqa: E402
 from phonolab.core.sound import MAX_WINDOW_SECONDS, LongSoundError, Sound  # noqa: E402
 from phonolab.core.textgrid import IntervalTier, TextGrid  # noqa: E402
@@ -54,6 +55,7 @@ class FigureRequest:
     pitch: PitchSettings = field(default_factory=PitchSettings)
     formants: FormantSettings = field(default_factory=FormantSettings)
     intensity: IntensitySettings = field(default_factory=IntensitySettings)
+    corrections: Corrections = field(default_factory=Corrections)
 
 
 ANALYSIS_MARGIN = 0.2  # s of context on each side, so contours reach the figure's edges
@@ -144,7 +146,7 @@ def _draw_spectrogram(ax, sound: Sound, start: float, end: float, req: FigureReq
     if fs.show_pitch_on_spectrogram or fs.show_intensity_on_spectrogram:
         twin = ax.twinx()
         if fs.show_pitch_on_spectrogram:
-            p = analysis.compute_pitch(local, req.pitch)
+            p = req.corrections.shifted(-offset).apply_pitch(analysis.compute_pitch(local, req.pitch))
             twin.plot(p.times + offset, p.frequencies, color=pal["pitch"], linewidth=1.5)
             twin.set_ylim(req.pitch.floor, req.pitch.ceiling)
             twin.set_ylabel("Pitch (Hz)")
@@ -157,7 +159,7 @@ def _draw_spectrogram(ax, sound: Sound, start: float, end: float, req: FigureReq
 
 def _draw_pitch(ax, sound: Sound, start: float, end: float, req: FigureRequest, pal):
     local, offset = _local(sound, start, end)
-    p = analysis.compute_pitch(local, req.pitch)
+    p = req.corrections.shifted(-offset).apply_pitch(analysis.compute_pitch(local, req.pitch))
     times = p.times + offset
     mask = (times >= start) & (times <= end)
     f = p.frequencies[mask]
@@ -179,6 +181,7 @@ def _draw_pitch(ax, sound: Sound, start: float, end: float, req: FigureRequest, 
 def _draw_voicing(ax, sound: Sound, start: float, end: float, req: FigureRequest, pal):
     local, offset = _local(sound, start, end)
     r = voice.compute_voicing(local, voice.VoicingSettings(), req.pitch)
+    r = req.corrections.shifted(-offset).apply_voicing(r)
     spans = [(a + offset, b - a) for a, b in zip(r.starts, r.ends, strict=True)]
     ax.broken_barh(spans, (0.15, 0.7), facecolor=pal["voiced"], edgecolor=pal["boundary"], linewidth=0.5)
     ax.set_ylim(0, 1)

@@ -13,6 +13,7 @@ from phonolab.core import praat_engine
 from phonolab.core.analysis import PitchMethod, PitchSettings, pitch_command, praat_pitch, setting
 from phonolab.core.sound import Sound
 from phonolab.core.textgrid import TextGrid
+from phonolab.core.voice_types import VoicingResult
 
 # Script text leaving the PointProcess selected; PITCH is replaced with the pitch command.
 _PULSES = """p = PITCH
@@ -25,6 +26,8 @@ class VoiceSettings:
     title = "Voice (pulses, jitter, shimmer)"
     max_period_factor: float = setting(1.3, "Maximum period factor", "", 1.0, 10.0)
     max_amplitude_factor: float = setting(1.6, "Maximum amplitude factor", "", 1.0, 10.0)
+    period_floor: float = setting(0.0001, "Period floor", "s", 0.00001, 0.1, decimals=5)
+    period_ceiling: float = setting(0.02, "Period ceiling", "s", 0.001, 1.0, decimals=4)
 
 
 @dataclass(frozen=True)
@@ -60,25 +63,6 @@ class VoicingSettings:
     title = "Voicing"
     max_period: float = setting(0.02, "Maximum period", "s", 0.001, 1.0, decimals=4)
     mean_period: float = setting(0.01, "Mean period", "s", 0.001, 1.0, decimals=4)
-
-
-@dataclass(frozen=True)
-class VoicingResult:
-    """Voiced stretches; everything between them is unvoiced."""
-
-    starts: np.ndarray
-    ends: np.ndarray
-
-    def voiced_at(self, t: float) -> bool:
-        i = int(np.searchsorted(self.starts, t, side="right")) - 1
-        return i >= 0 and t < self.ends[i]
-
-    def voiced_fraction(self, start: float, end: float) -> float:
-        start, end = sorted((start, end))
-        if end <= start:
-            return float("nan")
-        overlap = np.clip(np.minimum(self.ends, end) - np.maximum(self.starts, start), 0, None)
-        return float(overlap.sum() / (end - start))
 
 
 def compute_voicing(sound: Sound, s: VoicingSettings, pitch: PitchSettings) -> VoicingResult:
@@ -136,14 +120,37 @@ def parse_report(text: str) -> dict[str, list[tuple[str, str]]]:
     return sections
 
 
-def voice_report(sound: Sound, pitch: PitchSettings, voice: VoiceSettings, start: float, end: float) -> VoiceReport:
-    """Praat's "Voice report" for [start, end], analysed with a margin like Praat's editor does."""
+def _period_range_script(start: float, end: float, voice: VoiceSettings) -> str:
+    """Praat's voice report fixes the period range, so a chosen one gets its own jitter and shimmer lines."""
+    if (voice.period_floor, voice.period_ceiling) == (VoiceSettings.period_floor, VoiceSettings.period_ceiling):
+        return ""
+    periods = f"{voice.period_floor}, {voice.period_ceiling}, {voice.max_period_factor}"
+    return f"""selectObject: pp
+jitter = Get jitter (local): {start}, {end}, {periods}
+selectObject: part, pp
+shimmer = Get shimmer (local): {start}, {end}, {periods}, {voice.max_amplitude_factor}
+appendInfoLine: "With periods from {voice.period_floor} to {voice.period_ceiling} s:"
+appendInfoLine: "   Jitter (local): ", percent$ (jitter, 3)
+appendInfoLine: "   Shimmer (local): ", percent$ (shimmer, 3)"""
+
+
+def voice_report(
+    sound: Sound, pitch: PitchSettings, voice: VoiceSettings, start: float, end: float, corrections=None
+) -> VoiceReport:
+    """Praat's "Voice report" for [start, end], analysed with a margin like Praat's editor does.
+
+    ``corrections`` are made to Praat's Pitch and PointProcess before the report is written.
+    """
     start, end = sorted((start, end))
     pitch = for_voice_analysis(pitch)
     margin = 3.0 / pitch.floor  # enough context for the pitch analysis at the edges
     from_time, to_time = max(0.0, start - margin), min(sound.duration, end + margin)
     if sound.is_long:
-        return voice_report(sound.extract(from_time, to_time), pitch, voice, start - from_time, end - from_time)
+        local = corrections.shifted(-from_time) if corrections is not None else None
+        part = sound.extract(from_time, to_time)
+        return voice_report(part, pitch, voice, start - from_time, end - from_time, local)
+    pitch_edits = corrections.pitch_script() if corrections is not None else ""
+    pulse_edits = corrections.pulse_script() if corrections is not None else ""
     if praat_engine.available():
         arguments = (
             f"{start}, {end}, {pitch.floor}, {pitch.ceiling}, {voice.max_period_factor}, "
@@ -151,16 +158,21 @@ def voice_report(sound: Sound, pitch: PitchSettings, voice: VoiceSettings, start
         )
         body = f"""part = Extract part: {from_time}, {to_time}, "rectangular", 1, "yes"
 p = {pitch_command(pitch)}
-selectObject: part, p
+{pitch_edits}selectObject: part, p
 pp = To PointProcess (cc)
-selectObject: part, p, pp
+{pulse_edits}selectObject: part, p, pp
 report$ = Voice report: {arguments}
-writeInfoLine: report$"""
+writeInfoLine: report$
+{_period_range_script(start, end, voice)}"""
         text = praat_engine.analyse(sound, body)[0]
         return VoiceReport(text, parse_report(text))
     snd = sound.praat.extract_part(from_time=from_time, to_time=to_time, preserve_times=True)
     pitch_obj = praat_pitch(snd, pitch)
+    for formula in corrections.pitch_formulas() if corrections is not None else ():
+        call(pitch_obj, "Formula", formula)
     pulses = call([snd, pitch_obj], "To PointProcess (cc)")
+    for command, *args in corrections.pulse_commands() if corrections is not None else ():
+        call(pulses, command, *args)
     text = call(
         [snd, pitch_obj, pulses], "Voice report", start, end, pitch.floor, pitch.ceiling,
         voice.max_period_factor, voice.max_amplitude_factor, pitch.silence_threshold, pitch.voicing_threshold,
