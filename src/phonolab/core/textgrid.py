@@ -264,6 +264,110 @@ class TextGrid:
         return "\n".join(out) + "\n"
 
 
+# ---------------------------------------------------------------------- moving several boundaries
+
+
+def aligned_handles(grid: TextGrid, t: float, tolerance: float = 1e-6) -> list[tuple[int, int]]:
+    """(tier, index) of every boundary or point at ``t``, across all tiers."""
+    found = []
+    for i, tier in enumerate(grid.tiers):
+        near = tier.boundary_near(t, tolerance) if isinstance(tier, IntervalTier) else tier.point_near(t, tolerance)
+        if near is not None:
+            found.append((i, near))
+    return found
+
+
+def _room(tier: Tier, index: int) -> tuple[float, float]:
+    """How far a boundary or point can move before it reaches a neighbour."""
+    margin = EPSILON * 10
+    if isinstance(tier, IntervalTier):
+        return tier.intervals[index - 1].xmin + margin, tier.intervals[index].xmax - margin
+    low = tier.points[index - 1].time + margin if index > 0 else tier.xmin
+    high = tier.points[index + 1].time - margin if index + 1 < len(tier.points) else tier.xmax
+    return low, high
+
+
+def move_together(grid: TextGrid, handles: list[tuple[int, int]], t: float) -> float:
+    """Move boundaries and points to one time, stopping where the first of them would hit a neighbour."""
+    rooms = [_room(grid.tiers[i], j) for i, j in handles]
+    t = min(max(t, max(r[0] for r in rooms)), min(r[1] for r in rooms))
+    for i, j in handles:
+        tier = grid.tiers[i]
+        tier.move_boundary(j, t) if isinstance(tier, IntervalTier) else tier.move_point(j, t)
+    return t
+
+
+def rubber_band(tier: IntervalTier, original: IntervalTier, index: int, t: float, low: float, high: float) -> float:
+    """Move a boundary and stretch those around it in proportion, between the fixed times ``low`` and ``high``.
+
+    Works from ``original`` so that a long drag doesn't build up rounding, and boundaries keep their order.
+    """
+    start = original.intervals[index].xmin
+    margin = EPSILON * 1000
+    t = min(max(t, low + margin), high - margin)
+    for i in range(1, len(original.intervals)):
+        b = original.intervals[i].xmin
+        if low < b <= start:
+            moved = low + (b - low) * (t - low) / (start - low)
+        elif start < b < high:
+            moved = t + (b - start) * (high - t) / (high - start)
+        else:
+            continue
+        tier.intervals[i - 1].xmax = tier.intervals[i].xmin = moved
+    return t
+
+
+# ---------------------------------------------------------------------- converting, extracting, merging
+
+
+def points_from_intervals(tier: IntervalTier, where: str = "centre") -> PointTier:
+    """A point for each labelled interval, at its ``start``, ``centre`` or ``end``, keeping the labels."""
+    times = {
+        "start": lambda iv: iv.xmin,
+        "centre": lambda iv: (iv.xmin + iv.xmax) / 2,
+        "end": lambda iv: iv.xmax,
+    }[where]
+    points = [Point(times(iv), iv.text) for iv in tier.intervals if iv.text.strip()]
+    return PointTier(f"{tier.name}_{where}", tier.xmin, tier.xmax, points)
+
+
+def intervals_from_points(tier: PointTier) -> IntervalTier:
+    """Boundaries at the points. Each interval takes the label of the point that starts it."""
+    out = IntervalTier(f"{tier.name}_intervals", tier.xmin, tier.xmax)
+    for p in tier.points:
+        if abs(p.time - tier.xmin) < EPSILON:
+            out.intervals[0].text = p.mark
+        elif abs(p.time - tier.xmax) >= EPSILON:
+            out.intervals[out.add_boundary(p.time)].text = p.mark
+    return out
+
+
+def extract_tier(grid: TextGrid, index: int) -> TextGrid:
+    return TextGrid(grid.xmin, grid.xmax, [copy.deepcopy(grid.tiers[index])])
+
+
+def merge_tiers(grid: TextGrid, other: TextGrid, tolerance: float = 1e-3) -> None:
+    """Add copies of ``other``'s tiers to ``grid``. They must cover the same time, or labels would be misplaced."""
+    if abs(other.xmax - grid.xmax) > tolerance or abs(other.xmin - grid.xmin) > tolerance:
+        raise TextGridError(
+            f"That TextGrid covers {other.xmin:g} to {other.xmax:g} s, and this one {grid.xmin:g} to {grid.xmax:g} s"
+        )
+    names = {tier.name for tier in grid.tiers}
+    for tier in other.tiers:
+        new = copy.deepcopy(tier)
+        new.xmin, new.xmax = grid.xmin, grid.xmax
+        if isinstance(new, IntervalTier):
+            new.intervals[0].xmin, new.intervals[-1].xmax = grid.xmin, grid.xmax
+        else:
+            new.points = [p for p in new.points if grid.xmin <= p.time <= grid.xmax]
+        number = 2
+        while new.name in names:
+            new.name = f"{tier.name}_{number}"
+            number += 1
+        names.add(new.name)
+        grid.tiers.append(new)
+
+
 def find(tg: TextGrid, pattern: str, regex: bool = False, case_sensitive: bool = False) -> list[tuple[int, int]]:
     """(tier, item) of every label matching ``pattern``, in time order (then tier order).
 

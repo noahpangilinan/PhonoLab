@@ -23,24 +23,25 @@ TextGrids are read and written in Praat's own formats, so you can move between P
 5. [Annotation (TextGrids)](#annotation-textgrids)
 6. [Measurements and queries](#measurements-and-queries)
 7. [Correcting analyses](#correcting-analyses)
-8. [Editing the audio](#editing-the-audio)
-9. [Editing tier files](#editing-tier-files)
-10. [Long recordings](#long-recordings)
-11. [Manipulation (PSOLA)](#manipulation-psola)
-12. [Sound operations, recording and synthesis](#sound-operations-recording-and-synthesis)
-13. [Batch measurement](#batch-measurement)
-14. [Scripting (Praat and Python)](#scripting-praat-and-python)
-15. [Publication figures](#publication-figures)
-16. [Analysis settings and defaults](#analysis-settings-and-defaults)
-17. [Keyboard shortcuts](#keyboard-shortcuts)
-18. [Menu reference](#menu-reference)
-19. [How results relate to Praat](#how-results-relate-to-praat)
-20. [Files, formats and preferences](#files-formats-and-preferences)
-21. [Architecture](#architecture)
-22. [Development](#development)
-23. [Troubleshooting](#troubleshooting)
-24. [Not yet covered](#not-yet-covered)
-25. [License](#license)
+8. [Working with tiers](#working-with-tiers)
+9. [Editing the audio](#editing-the-audio)
+10. [Editing tier files](#editing-tier-files)
+11. [Long recordings](#long-recordings)
+12. [Manipulation (PSOLA)](#manipulation-psola)
+13. [Sound operations, recording and synthesis](#sound-operations-recording-and-synthesis)
+14. [Batch measurement](#batch-measurement)
+15. [Scripting (Praat and Python)](#scripting-praat-and-python)
+16. [Publication figures](#publication-figures)
+17. [Analysis settings and defaults](#analysis-settings-and-defaults)
+18. [Keyboard shortcuts](#keyboard-shortcuts)
+19. [Menu reference](#menu-reference)
+20. [How results relate to Praat](#how-results-relate-to-praat)
+21. [Files, formats and preferences](#files-formats-and-preferences)
+22. [Architecture](#architecture)
+23. [Development](#development)
+24. [Troubleshooting](#troubleshooting)
+25. [Not yet covered](#not-yet-covered)
+26. [License](#license)
 
 ---
 
@@ -312,6 +313,17 @@ sound; it loads when the sound opens, and batch measurement uses it too, marking
 
 The voice report's period range is fixed, so choosing your own (*Analysis ▸ Voice settings*) adds extra jitter
 and shimmer lines for it.
+
+## Working with tiers
+
+| Do this | How |
+|---|---|
+| Move aligned boundaries on all tiers together | Alt+drag a boundary. They stop where the first would reach a neighbour. |
+| Stretch the boundaries around one | Ctrl+drag it. The others keep their proportions, between the tier's ends or the selection's. |
+| Make points from labelled intervals | *Annotate ▸ Convert tier to points*, at their start, centre or end |
+| Make intervals from points | *Annotate ▸ Convert tier to intervals*. Each interval takes the label of the point starting it. |
+| Save one tier as a TextGrid | *Annotate ▸ Extract tier to file…* |
+| Add the tiers of another TextGrid | *Annotate ▸ Merge TextGrid file…*. It must cover the same time. |
 
 ## Editing the audio
 

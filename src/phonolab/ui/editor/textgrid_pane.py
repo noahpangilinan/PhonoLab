@@ -11,7 +11,16 @@ from PyQt6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen
 from PyQt6.QtWidgets import QInputDialog, QMenu, QMessageBox, QSizePolicy, QWidget
 
 from phonolab.core.ipa import to_unicode
-from phonolab.core.textgrid import IntervalTier, PointTier, TextGridError
+from phonolab.core.textgrid import (
+    IntervalTier,
+    PointTier,
+    TextGridError,
+    aligned_handles,
+    intervals_from_points,
+    move_together,
+    points_from_intervals,
+    rubber_band,
+)
 from phonolab.ui.document import Document
 from phonolab.ui.editor.time_axis import TimeAxisController
 from phonolab.ui.theme import COLORS
@@ -25,6 +34,8 @@ class TextGridView(QWidget):
 
     Click selects an interval (or point), drag moves a boundary, double-click adds
     one, Enter adds one at the cursor, Delete/Alt+Backspace removes the nearest one.
+    Alt+drag moves everything aligned with a boundary, on all tiers. Ctrl+drag stretches the
+    boundaries around it in proportion, within the selection if it holds the boundary.
     """
 
     item_selected = pyqtSignal()  # selected tier/item changed
@@ -39,7 +50,9 @@ class TextGridView(QWidget):
         self.selected_tier = 0
         self.selected_item: int | None = None
         self.playhead: float | None = None
-        self._drag = None  # (tier, index, snapshot) while dragging
+        self._drag = None  # (tier, index, snapshot, moved) while dragging
+        self._linked = None  # everything moving together on Alt+drag: [(tier, index), ...]
+        self._band = None  # the fixed ends of a Ctrl+drag
         self._hover = None  # (tier, index) of the boundary/point under the mouse
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setMouseTracking(True)
@@ -215,6 +228,28 @@ class TextGridView(QWidget):
         self.selected_tier, self.selected_item = index + 1, None
         self._on_textgrid_changed()
 
+    def _add_converted(self, description: str, tier):
+        position = self.selected_tier + 1
+        self._try(description, lambda g: g.tiers.insert(position, tier))
+        self.selected_tier, self.selected_item = position, None
+        self._on_textgrid_changed()
+
+    def to_points(self, where: str):
+        tier = self.current_tier()
+        if not isinstance(tier, IntervalTier):
+            self.message.emit("Select an interval tier first")
+        elif not any(iv.text.strip() for iv in tier.intervals):
+            self.message.emit("This tier has no labelled intervals to convert")
+        else:
+            self._add_converted("Convert to points", points_from_intervals(tier, where))
+
+    def to_intervals(self):
+        tier = self.current_tier()
+        if not isinstance(tier, PointTier):
+            self.message.emit("Select a point tier first")
+        else:
+            self._add_converted("Convert to intervals", intervals_from_points(tier))
+
     def remove_tier(self, index: int | None = None):
         index = self.selected_tier if index is None else index
         if not 0 <= index < len(self.tiers):
@@ -358,6 +393,7 @@ class TextGridView(QWidget):
         tier = self.tiers[ti]
         if handle is not None:
             self._drag = (ti, handle, self.doc.begin_edit(), False)
+            self._start_special_drag(ti, handle, ev.modifiers())
             if isinstance(tier, PointTier):
                 self.select(ti, handle)
             else:
@@ -373,6 +409,17 @@ class TextGridView(QWidget):
             self.item_selected.emit()
         self.update()
 
+    def _start_special_drag(self, ti: int, handle: int, modifiers):
+        tier = self.tiers[ti]
+        if modifiers & Qt.KeyboardModifier.AltModifier:
+            t = tier.intervals[handle].xmin if isinstance(tier, IntervalTier) else tier.points[handle].time
+            self._linked = aligned_handles(self.doc.textgrid, t)
+        elif modifiers & Qt.KeyboardModifier.ControlModifier and isinstance(tier, IntervalTier):
+            low, high = tier.xmin, tier.xmax
+            if self.axis.selection and self.axis.selection[0] < tier.intervals[handle].xmin < self.axis.selection[1]:
+                low, high = self.axis.selection
+            self._band = (low, high)
+
     def mouseMoveEvent(self, ev):  # noqa: N802
         x = ev.position().x()
         t = self._t(x)
@@ -380,7 +427,11 @@ class TextGridView(QWidget):
             ti, idx, snapshot, _ = self._drag
             tier = self.tiers[ti]
             t = self.axis.clamp(t)
-            if isinstance(tier, IntervalTier):
+            if self._linked:
+                move_together(self.doc.textgrid, self._linked, t)
+            elif self._band:
+                rubber_band(tier, snapshot.tiers[ti], idx, t, *self._band)
+            elif isinstance(tier, IntervalTier):
                 tier.move_boundary(idx, t)
             else:
                 tier.move_point(idx, t)
@@ -402,10 +453,16 @@ class TextGridView(QWidget):
         if not self._drag:
             return super().mouseReleaseEvent(ev)
         ti, idx, snapshot, moved = self._drag
-        self._drag = None
+        linked, band = self._linked, self._band
+        self._drag = self._linked = self._band = None
         if moved:
             kind = "boundary" if isinstance(self.tiers[ti], IntervalTier) else "point"
-            self.doc.commit_edit(f"Move {kind}", snapshot)
+            if linked:
+                self.doc.commit_edit(f"Move {len(linked)} aligned boundaries", snapshot)
+            elif band:
+                self.doc.commit_edit("Stretch boundaries", snapshot)
+            else:
+                self.doc.commit_edit(f"Move {kind}", snapshot)
         if isinstance(self.tiers[ti], IntervalTier):
             self.select(ti, idx)
         self.update()

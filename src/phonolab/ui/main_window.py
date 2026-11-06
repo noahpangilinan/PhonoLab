@@ -36,7 +36,7 @@ from phonolab.core.sound import (
     SoundLoadError,
 )
 from phonolab.core.spectrum import SpectrumSettings
-from phonolab.core.textgrid import TextGrid, TextGridError
+from phonolab.core.textgrid import TextGrid, TextGridError, extract_tier, merge_tiers
 from phonolab.core.tiers import SUFFIXES as TIER_SUFFIXES
 from phonolab.core.tiers import TierFile, TierFileError, read_tier
 from phonolab.ui.dialogs.batch_dialog import BatchDialog
@@ -503,6 +503,23 @@ class MainWindow(QMainWindow):
             tip="A tier of voiced (V) and unvoiced (U) intervals from the glottal pulses",
         )
         self._action(m, "Re&move tier…", lambda: tv().remove_tier(), needs=tg)
+        m.addSeparator()
+        c = m.addMenu("&Convert tier to points")
+        for label, where in (
+            ("At &start of intervals", "start"),
+            ("At &centre of intervals", "centre"),
+            ("At &end of intervals", "end"),
+        ):
+            self._action(c, label, lambda _=False, w=where: tv().to_points(w), needs=tg)
+        self._action(m, "Convert tier to i&ntervals", lambda: tv().to_intervals(), needs=tg)
+        self._action(m, "E&xtract tier to file…", self.extract_tier_to_file, needs=tg)
+        self._action(
+            m,
+            "Mer&ge TextGrid file…",
+            self.merge_textgrid_file,
+            needs=tg,
+            tip="Add the tiers of another TextGrid to this one",
+        )
 
         m = mb.addMenu("&Tools")
         self._action(
@@ -686,6 +703,27 @@ class MainWindow(QMainWindow):
         i = self.tabs.addTab(editor, doc.title)
         self.tabs.setTabToolTip(i, str(doc.sound.path or ""))
         self.tabs.setCurrentIndex(i)
+
+    def extract_tier_to_file(self):
+        view = self.editor.textgrid_view
+        tier = view.current_tier()
+        if tier is None:
+            return
+        base = Path(self._last_dir()) / f"{tier.name}.TextGrid"
+        path, _ = QFileDialog.getSaveFileName(self, "Extract tier", str(base), "TextGrid (*.TextGrid)")
+        if path:
+            grid = extract_tier(self.editor.doc.textgrid, view.selected_tier)
+            self._run_export(lambda: grid.write(path), Path(path))
+
+    def merge_textgrid_file(self):
+        path, _ = QFileDialog.getOpenFileName(self, "Merge TextGrid", self._last_dir(), TEXTGRID_FILTER)
+        if not path:
+            return
+        try:
+            other = TextGrid.read(path)
+            self.editor.doc.edit("Merge TextGrid", lambda grid: merge_tiers(grid, other))
+        except (OSError, TextGridError) as err:
+            QMessageBox.warning(self, "Could not merge TextGrid", str(err))
 
     def open_textgrid_dialog(self):
         path, _ = QFileDialog.getOpenFileName(self, "Open TextGrid", self._last_dir(), TEXTGRID_FILTER)
