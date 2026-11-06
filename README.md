@@ -250,12 +250,20 @@ Each query works on the **selection** if there is one, otherwise **at the cursor
 | Formants | F1 | F1–F4 with bandwidths B1–B4 | Mean F1–F4 |
 | Intensity | F8 | dB | Energy-averaged mean, min, max (Praat's "Get mean (energy)") |
 | Duration | F2 | Total duration | Selection duration |
+| Compare formant ceilings | Ctrl+6 | Visible stretch | Selection |
 | Spectrum | F6 | Opens the spectrum panel for a window around the cursor | Spectrum of the selection |
 | Spectral moments | — | Centre of gravity, sd, skewness, kurtosis | Same |
 | CPPS | — | Over the visible window | Over the selection |
 | Voice report | Ctrl+Shift+V | Over the visible window | Over the selection |
 
 Undefined values (unvoiced frames, silence) print as `--undefined--`, as Praat does.
+
+### Comparing formant ceilings
+
+*Query ▸ Compare formant ceilings…* (Ctrl+6) is Praat's FormantPath. It analyses the selection (up to 30 s) at
+nine ceilings around your current setting and shows them side by side, each with a stress score for how
+smoothly F1–F3 run. Lower is usually better, but check the tracks too. If the lowest stress is at the end of
+the range, the best ceiling may lie beyond it. Click a tile and choose *Use this ceiling*.
 
 ### Voice report
 

@@ -310,6 +310,10 @@ QWidget#editorPage {{ background: {window}; }}
 QLabel#appTitle {{ color: {accent}; }}
 QLabel#muted, QLabel#hint {{ color: {text_muted}; }}
 QLabel#sectionTitle {{ color: {text_muted}; font-weight: 600; }}
+QFrame#candidateTile {{ background: {surface}; border: 1px solid {border}; border-radius: 8px; }}
+QFrame#candidateTile:hover {{ border-color: {border_strong}; }}
+QFrame#candidateTile[selected="true"] {{ border: 2px solid {accent}; }}
+QLabel#candidateBest {{ color: {accent_hover}; font-weight: 600; }}
 QPushButton#startAction {{
     background: transparent; border: none; border-radius: 6px; padding: 0; text-align: left;
     min-height: 38px; max-height: 38px;

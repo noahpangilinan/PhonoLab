@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import functools
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -23,7 +24,7 @@ from PyQt6.QtWidgets import (
 )
 
 from phonolab.audio.player import AudioPlayer
-from phonolab.core import manipulation, queries, registry, voice
+from phonolab.core import formant_path, manipulation, praat_engine, queries, registry, voice
 from phonolab.core.manipulation import ManipulationSettings
 from phonolab.core.queries import fmt
 from phonolab.core.settings import Preferences
@@ -143,6 +144,7 @@ class SoundEditor(QWidget):
     log = pyqtSignal(str)  # query results for the Results dock
     busy_changed = pyqtSignal(str, bool)
     new_sound = pyqtSignal(object)  # a Sound to open in a new tab (e.g. a resynthesis)
+    formant_path_ready = pyqtSignal(object)  # a FormantPathResult to show
 
     def __init__(self, doc: Document, prefs: Preferences, player: AudioPlayer, parent=None):
         super().__init__(parent)
@@ -360,8 +362,27 @@ class SoundEditor(QWidget):
         if self.layer_visible("manipulation"):
             self.ensure_manipulation()
 
+    def compare_formant_ceilings(self):
+        """Analyse the selection (or visible stretch) at several ceilings, in the background."""
+        start, end = self.axis.selection or self.axis.view
+        if not praat_engine.available():
+            self.message.emit("Comparing formant ceilings needs the bundled Praat 7 program")
+        elif end - start > formant_path.MAX_SECONDS:
+            self.message.emit(f"Select {formant_path.MAX_SECONDS:.0f} seconds or less to compare formant ceilings")
+        else:
+            settings = self.prefs.analysis_settings("formant_path", formant_path.FormantPathSettings)
+            self.manager.submit(
+                "formant_path", formant_path.compare_ceilings, start, end, self.manager.settings["formants"], settings
+            )
+
+    def use_formant_ceiling(self, ceiling: float):
+        self.apply_settings("formants", replace(self.manager.settings["formants"], max_formant=round(ceiling, 1)))
+        self.log.emit(f"Formant ceiling set to {ceiling:.0f} Hz")
+
     def _on_job_done(self, key: str, result):
-        if key == "manipulation":
+        if key == "formant_path":
+            self.formant_path_ready.emit(result)
+        elif key == "manipulation":
             self.doc.manipulation = ManipulationState(result, self.manipulation_settings, self.doc.undo_stack, self.doc)
             self.manipulation_pane.set_state(self.doc.manipulation)
         elif key == "resynthesis":

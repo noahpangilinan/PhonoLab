@@ -39,6 +39,7 @@ from phonolab.core.spectrum import SpectrumSettings
 from phonolab.core.textgrid import TextGrid, TextGridError
 from phonolab.ui.dialogs.batch_dialog import BatchDialog
 from phonolab.ui.dialogs.figure_dialog import FigureDialog
+from phonolab.ui.dialogs.formant_path_dialog import FormantPathDialog
 from phonolab.ui.dialogs.new_textgrid import NewTextGridDialog
 from phonolab.ui.dialogs.record_dialog import RecordDialog
 from phonolab.ui.dialogs.settings_dialog import SettingsDialog
@@ -387,6 +388,14 @@ class MainWindow(QMainWindow):
         self._action(m, "Get &formants", lambda: self.editor.query_formants(), ["F1", "Ctrl+2"], needs=e)
         self._action(m, "Get &intensity", lambda: self.editor.query_intensity(), ["F8", "Ctrl+3"], needs=e)
         self._action(m, "Get &duration", lambda: self.editor.query_duration(), ["F2", "Ctrl+4"], needs=e)
+        self._action(
+            m,
+            "Compare formant &ceilings…",
+            lambda: self.editor.compare_formant_ceilings(),
+            "Ctrl+6",
+            needs=e,
+            tip="See the selection analysed at several formant ceilings and choose one",
+        )
         m.addSeparator()
         self._action(m, "Spectral &slice / LTAS", self._show_spectrum, ["F6", "Ctrl+5"], needs=e)
         self._action(m, "Spectral &moments", lambda: self._show_spectrum(log=True), needs=e)
@@ -580,6 +589,7 @@ class MainWindow(QMainWindow):
         editor.message.connect(self.show_message)
         editor.log.connect(self.log_panel.append)
         editor.new_sound.connect(self.open_new_sound)
+        editor.formant_path_ready.connect(lambda result, ed=editor: self._show_formant_path(ed, result))
         editor.busy_changed.connect(lambda n, b, ed=editor: self._on_busy(ed, n, b))
         doc.title_changed.connect(lambda _t, ed=editor: self._on_title_changed(ed))
         doc.textgrid_changed.connect(self._update_actions)
@@ -869,6 +879,11 @@ class MainWindow(QMainWindow):
             settings = dialog.value()
             for ed in self.editors():
                 ed.apply_settings(name, settings)
+
+    def _show_formant_path(self, editor: SoundEditor, result):
+        dialog = FormantPathDialog(result, editor.manager.settings["formants"].max_formant, self)
+        if dialog.exec():
+            editor.use_formant_ceiling(dialog.ceiling)
 
     def _show_spectrum(self, log: bool = False):
         self.spectrum_panel.show()

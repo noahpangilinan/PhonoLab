@@ -487,3 +487,27 @@ def test_closing_a_long_sound_deletes_its_working_file(long_window, qtbot):
     assert (folder / "samples.f32").exists()
     long_window.close_tab(0)
     qtbot.waitUntil(lambda: not folder.exists(), timeout=5000)
+
+
+def test_formant_ceiling_dialog_picks_and_applies(window, qtbot, wav, monkeypatch):
+    from phonolab.core import praat_engine
+    from phonolab.ui.dialogs.formant_path_dialog import FormantPathDialog
+    from tests.test_formant_path import result
+
+    window.open_sound(str(wav))
+    editor = window.editor
+    dialog = FormantPathDialog(result([5.0, 3.0, 4.0]), 5500.0, window)
+    qtbot.addWidget(dialog)
+    assert dialog.ceiling == 4500.0  # starts on the lowest stress
+    dialog.tiles[2].chosen.emit(2)
+    assert dialog.ceiling == 5000.0 and dialog.tiles[2].property("selected")
+    editor.use_formant_ceiling(dialog.ceiling)
+    assert editor.manager.settings["formants"].max_formant == 5000.0
+    if praat_engine.available():  # the whole route, stopping at the dialog
+        shown = []
+        monkeypatch.setattr(window, "_show_formant_path", lambda ed, r: shown.append(r))
+        editor.formant_path_ready.connect(shown.append)
+        editor.axis.set_selection(0.2, 0.8)
+        editor.compare_formant_ceilings()
+        qtbot.waitUntil(lambda: bool(shown), timeout=30000)
+        assert len(shown[0].candidates) == 9
