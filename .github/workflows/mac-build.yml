@@ -2,7 +2,7 @@ name: macOS build
 
 on:
   push:
-    branches: [main]
+    branches: [main, "m[0-9]*"]
     tags: ["v*"]
   workflow_dispatch:
 
