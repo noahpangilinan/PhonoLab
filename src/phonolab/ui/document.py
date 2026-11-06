@@ -12,7 +12,7 @@ from PyQt6.QtGui import QUndoCommand, QUndoStack
 from phonolab.core.corrections import Corrections
 from phonolab.core.sound import LongSoundError, Sound
 from phonolab.core.textgrid import TextGrid, TextGridError
-from phonolab.core.time_edit import Splice
+from phonolab.core.time_edit import Splice, smooth_joins
 
 _revisions = count(1)
 
@@ -111,9 +111,12 @@ class Document(QObject):
             self._saved_corrections = Corrections.load_for(path)
         self.title_changed.emit(self.title)
 
-    def splice_audio(self, description: str, start: int, end: int, inserted: np.ndarray | None = None) -> None:
+    def splice_audio(
+        self, description: str, start: int, end: int, inserted: np.ndarray | None = None, fade: int = 0
+    ) -> None:
         """Replace samples ``[start, end)`` with ``inserted`` as one undoable step, annotations included.
 
+        ``fade`` crossfades each join over that many samples. It leaves the timing as it is.
         Raises TextGridError or LongSoundError (and changes nothing) if the edit can't be made.
         """
         sound = self.sound
@@ -127,6 +130,8 @@ class Document(QObject):
         rate = sound.sampling_rate
         splice = Splice(start / rate, (end - start) / rate, added / rate)
         grid = None if self.textgrid is None else splice.applied_to(self.textgrid)
+        if fade > 0:
+            end, inserted = smooth_joins(sound.samples, start, end, inserted, fade)
         self.undo_stack.push(
             _AudioCommand(self, description, start, end, inserted, grid, self.corrections.spliced(splice))
         )

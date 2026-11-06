@@ -308,6 +308,12 @@ class MainWindow(QMainWindow):
         )
         self._action(m, "Paste &before selection", lambda: self.paste_sound("before"), needs=e)
         self._action(m, "Paste a&fter selection", lambda: self.paste_sound("after"), needs=e)
+        self.smooth_joins_action = self._action(
+            m, "Smooth &joins", self.prefs.set_smooth_joins, checkable=True,
+            tip="Crossfade where cut or pasted sound meets, to avoid clicks. This changes the samples at each join.",
+        )  # fmt: skip
+        self.smooth_joins_action.setChecked(self.prefs.smooth_joins())
+        self._action(m, "Join fade &length…", self.set_join_fade)
         m.addSeparator()
         self._action(m, "Select &all", lambda: self.editor.axis.select_all(), "Ctrl+Shift+A", needs=e)
         self._action(
@@ -706,6 +712,11 @@ class MainWindow(QMainWindow):
             action.setCheckable(True)
             action.setChecked(c in self.editor.muted)
             action.toggled.connect(lambda on, ch=c: self.editor.set_channel_muted(ch, on))
+
+    def set_join_fade(self):
+        ms = self._ask_number("Join fade length", "Crossfade (ms):", self.prefs.join_fade_ms(), 0.1, 100.0, 1)
+        if ms is not None:
+            self.prefs.set_join_fade_ms(ms)
 
     def copy_sound(self):
         self.sound_clip = self.editor.copy_selection() or self.sound_clip

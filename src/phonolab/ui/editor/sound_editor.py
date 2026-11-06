@@ -341,11 +341,17 @@ class SoundEditor(QWidget):
             return None
         return a, b
 
+    def _join_fade(self) -> int:
+        """Samples to crossfade at the joins of an edit, if that's turned on."""
+        if not self.prefs.smooth_joins():
+            return 0
+        return max(1, round(self.prefs.join_fade_ms() / 1000 * self.doc.sound.sampling_rate))
+
     def _splice(self, description: str, start: int, end: int, inserted=None) -> bool:
         state = self.doc.manipulation
         modified = state is not None and state.is_modified
         try:
-            self.doc.splice_audio(description, start, end, inserted)
+            self.doc.splice_audio(description, start, end, inserted, self._join_fade())
         except (TextGridError, LongSoundError) as e:
             self.message.emit(str(e))
             return False

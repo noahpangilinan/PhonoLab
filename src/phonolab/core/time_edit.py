@@ -14,7 +14,46 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import numpy as np
+
 from phonolab.core.textgrid import EPSILON, Interval, IntervalTier, Point, PointTier, TextGrid, TextGridError
+
+
+def _ramp(n: int) -> np.ndarray:
+    """Rises smoothly from 0 to 1 over ``n`` samples, as a column to scale every channel."""
+    return (0.5 - 0.5 * np.cos(np.pi * (np.arange(n) + 0.5) / n))[:, np.newaxis]
+
+
+def smooth_joins(
+    samples: np.ndarray, start: int, end: int, inserted: np.ndarray | None, length: int
+) -> tuple[int, np.ndarray | None]:
+    """Crossfade the joins of an edit. Returns the ``end`` and ``inserted`` to use instead.
+
+    Each crossfade blends in what would have continued past the join, which exists because it's the audio
+    being removed or the audio beside the insertion. So the sound comes out exactly the same length, no
+    sample before the join changes, and labels stay on the samples they marked.
+    """
+    total = len(samples)
+    if inserted is None or len(inserted) == 0:
+        n = min(length, end - start, total - end)
+        if start == 0 or n <= 0:  # a cut from the very start or to the very end joins nothing
+            return end, inserted
+        ramp = _ramp(n)
+        return end + n, samples[start : start + n] * (1 - ramp) + samples[end : end + n] * ramp
+    new = np.array(inserted, dtype=float)
+    n = min(length, len(new) // 2)
+    if n == 0:
+        return end, new
+    ramp = _ramp(n)
+    if start > 0:  # from what would have followed, held at the last sample if the sound runs out
+        following = samples[min(start, total - 1) : start + n]
+        following = np.concatenate([following, np.repeat(following[-1:], n - len(following), axis=0)])
+        new[:n] = following * (1 - ramp) + new[:n] * ramp
+    if end < total:  # into what comes next, from just before it, held at the first sample at the very start
+        leading = samples[max(end - n, 0) : end] if end > 0 else samples[:1]
+        leading = np.concatenate([np.repeat(leading[:1], n - len(leading), axis=0), leading])
+        new[-n:] = new[-n:] * (1 - ramp) + leading * ramp
+    return end, new
 
 
 @dataclass(frozen=True)

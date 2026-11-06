@@ -376,6 +376,12 @@ Everything on the timeline follows the edit, and stays on the samples it marked:
 | Insert | The interval around it stretches. At a boundary, the new sound gets an empty interval. | Split around the new sound |
 | Replace a selection | Labels inside are rescaled to the new length | Those inside go |
 
+Joins are left as they fall by default, as in Praat, so a cut in the middle of a vowel can click, and every
+sample that remains is untouched. Turn on *Edit ▸ Smooth joins* to crossfade them, over 5 ms unless you change
+*Join fade length…*. The crossfade blends in the audio that would have continued past the join, so timing and
+labels don't move, but the samples just after each join change, so leave it off for audio you'll measure there.
+It applies to new edits, and undo restores the original samples.
+
 An audio edit resets the manipulation, because its pitch points came from the old audio. Undo brings it back.
 
 Edits stay in memory until you use *Save sound as…*. If you close without saving them, PhonoLab won't offer to

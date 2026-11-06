@@ -32,6 +32,11 @@ class MemoryStore:
         self.data[key] = value
 
 
+DEFAULT_JOIN_FADE_MS = 5.0
+MIN_JOIN_FADE_MS = 0.1
+MAX_JOIN_FADE_MS = 100.0
+
+
 class Preferences:
     def __init__(self, store: Store):
         self.store = store
@@ -66,6 +71,21 @@ class Preferences:
 
     def set_theme(self, theme: str) -> None:
         self.store.setValue("view/theme", json.dumps(theme))
+
+    def smooth_joins(self) -> bool:
+        return bool(self._json("edit/smooth_joins", False))
+
+    def set_smooth_joins(self, on: bool) -> None:
+        self.store.setValue("edit/smooth_joins", json.dumps(bool(on)))
+
+    def join_fade_ms(self) -> float:
+        value = self._json("edit/join_fade_ms", DEFAULT_JOIN_FADE_MS)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return DEFAULT_JOIN_FADE_MS
+        return min(max(float(value), MIN_JOIN_FADE_MS), MAX_JOIN_FADE_MS)
+
+    def set_join_fade_ms(self, ms: float) -> None:
+        self.store.setValue("edit/join_fade_ms", json.dumps(float(ms)))
 
     def recent_files(self) -> list[str]:
         return [p for p in self._json("recent", []) if isinstance(p, str)]
