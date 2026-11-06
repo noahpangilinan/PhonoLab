@@ -24,7 +24,8 @@ from PyQt6.QtWidgets import (
 )
 
 from phonolab.audio.player import AudioPlayer
-from phonolab.core import formant_path, manipulation, praat_engine, queries, registry, voice
+from phonolab.core import formant_path, manipulation, praat_engine, queries, registry, speech, voice
+from phonolab.core.ipa import to_unicode
 from phonolab.core.manipulation import ManipulationSettings
 from phonolab.core.queries import fmt
 from phonolab.core.settings import Preferences
@@ -202,6 +203,7 @@ class SoundEditor(QWidget):
         self._resynthesis = None  # (pitch, duration, gain, samples, sr) of the latest resynthesis
         self._after_resynthesis = None  # what to do when the pending resynthesis arrives
         self._resynthesis_tiers = None  # (pitch, duration, gain) submitted for the pending resynthesis
+        self._aligning = None  # name of the tier whose alignment is running
         self.panes = [self.waveform, self.spectrogram, self.manipulation_pane]
         self.splitter = QSplitter(Qt.Orientation.Vertical)
         self.splitter.addWidget(self.waveform)
@@ -351,6 +353,42 @@ class SoundEditor(QWidget):
             rate = sound.sampling_rate
             self.axis.set_selection(start / rate, (start + len(clip.samples)) / rate)
 
+    # ------------------------------------------------------------------ alignment
+
+    def align(self, language: str, whole_tier: bool = False):
+        """Find the words and phonemes of the selected interval's text, or of every labelled interval on its tier."""
+        view = self.textgrid_view
+        tier = view.current_tier()
+        if not praat_engine.available():
+            self.message.emit(speech.NEEDS_PRAAT)
+        elif not isinstance(tier, IntervalTier):
+            self.message.emit("Select an interval tier first")
+        elif not whole_tier and view.selected_item is None:
+            self.message.emit("Select an interval with text to align")
+        else:
+            chosen = tier.intervals if whole_tier else [tier.intervals[view.selected_item]]
+            spans = [(iv.xmin, iv.xmax, to_unicode(iv.text)) for iv in chosen if iv.text.strip()]
+            if not spans:
+                self.message.emit("Type the text of the interval first")
+                return
+            self._aligning = tier.name
+            self.message.emit("Aligning…")
+            self.manager.submit("alignment", speech.align_many, spans, language)
+
+    def _finish_alignment(self, alignments, problems):
+        source = self._aligning
+        if self.doc.textgrid is None or not any(t.name == source for t in self.doc.textgrid.tiers):
+            self.message.emit("The tier being aligned has gone")
+            return
+        if alignments:
+            self.doc.edit("Align", lambda grid: speech.apply_alignments(grid, source, alignments))
+        if problems:
+            self.message.emit(
+                f"{len(problems)} of {len(alignments) + len(problems)} could not be aligned: {problems[0]}"
+            )
+        else:
+            self.message.emit(f"Aligned {len(alignments)} interval(s)")
+
     # ------------------------------------------------------------------ layout helpers
 
     def _plot_area(self) -> tuple[float, float]:
@@ -495,6 +533,8 @@ class SoundEditor(QWidget):
     def _on_job_done(self, key: str, result):
         if key == "formant_path":
             self.formant_path_ready.emit(result)
+        elif key == "alignment":
+            self._finish_alignment(*result)
         elif key == "manipulation":
             self.doc.manipulation = ManipulationState(result, self.manipulation_settings, self.doc.undo_stack, self.doc)
             self.manipulation_pane.set_state(self.doc.manipulation)

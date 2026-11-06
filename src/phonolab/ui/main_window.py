@@ -23,7 +23,7 @@ from PyQt6.QtWidgets import (
 
 from phonolab import __version__
 from phonolab.audio.player import AudioPlayer
-from phonolab.core import praat_engine, sound_ops
+from phonolab.core import praat_engine, sound_ops, speech
 from phonolab.core.batch import BatchOptions
 from phonolab.core.figures import FigureSettings
 from phonolab.core.registry import ANALYSES
@@ -45,6 +45,7 @@ from phonolab.ui.dialogs.formant_path_dialog import FormantPathDialog
 from phonolab.ui.dialogs.new_textgrid import NewTextGridDialog
 from phonolab.ui.dialogs.record_dialog import RecordDialog
 from phonolab.ui.dialogs.settings_dialog import SettingsDialog
+from phonolab.ui.dialogs.speech_dialog import SpeechDialog
 from phonolab.ui.document import Document
 from phonolab.ui.editor.sound_editor import EXTRACT_FIRST, HIDDEN_BY_DEFAULT, LAYERS, SoundEditor
 from phonolab.ui.info_panel import InfoPanel
@@ -341,6 +342,12 @@ class MainWindow(QMainWindow):
         self._action(m, "&Record…", self.record, "Ctrl+R")
         self._action(m, "&New tone or noise…", self.new_sound)
         self._action(m, "Synthesize &vowel (Klatt)…", self.synthesize_vowel)
+        self._action(
+            m,
+            "Synthesize s&peech…",
+            self.synthesize_speech,
+            tip="Speak typed text in one of 133 languages, with a TextGrid of its words and phonemes",
+        )
         m.addSeparator()
         self._action(m, "E&xtract selection to new tab", self.extract_selection, "Ctrl+E", needs=e)
         self._action(m, "Convert to &mono", lambda: self._derive(sound_ops.to_mono), needs=e)
@@ -512,6 +519,16 @@ class MainWindow(QMainWindow):
         ):
             self._action(c, label, lambda _=False, w=where: tv().to_points(w), needs=tg)
         self._action(m, "Convert tier to i&ntervals", lambda: tv().to_intervals(), needs=tg)
+        m.addSeparator()
+        self._action(
+            m,
+            "&Align interval…",
+            lambda: self.align(False),
+            needs=tg,
+            tip="Find the words and phonemes of the selected interval's text",
+        )
+        self._action(m, "Align all intervals on tier…", lambda: self.align(True), needs=tg)
+        m.addSeparator()
         self._action(m, "E&xtract tier to file…", self.extract_tier_to_file, needs=tg)
         self._action(
             m,
@@ -837,6 +854,38 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "Synthesize vowel", str(err))
                 return
             self.open_new_sound(sound)
+
+    def synthesize_speech(self):
+        if not praat_engine.available():
+            QMessageBox.warning(self, "Synthesize speech", speech.NEEDS_PRAAT)
+            return
+        dialog = SpeechDialog(self._speech_language(), self.qsettings.value("speech/voice", "Female1"), self)
+        if not dialog.exec():
+            return
+        language, voice = dialog.language.currentText(), dialog.voice.currentText()
+        self.qsettings.setValue("speech/language", language)
+        self.qsettings.setValue("speech/voice", voice)
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            sound, grid = speech.synthesize(dialog.text.toPlainText(), language, voice, dialog.rate.value())
+        except speech.SpeechError as err:
+            QApplication.restoreOverrideCursor()
+            QMessageBox.warning(self, "Synthesize speech", str(err))
+            return
+        QApplication.restoreOverrideCursor()
+        self.open_new_sound(sound)
+        self.editor.doc.set_textgrid(grid, saved=False)
+
+    def _speech_language(self) -> str:
+        return self.qsettings.value("speech/language", speech.DEFAULT_LANGUAGE)
+
+    def align(self, whole_tier: bool):
+        languages = list(speech.LANGUAGES)
+        current = languages.index(self._speech_language())
+        language, ok = QInputDialog.getItem(self, "Align", "Language of the text:", languages, current, False)
+        if ok:
+            self.qsettings.setValue("speech/language", language)
+            self.editor.align(language, whole_tier)
 
     def record(self):
         dialog = RecordDialog(self)

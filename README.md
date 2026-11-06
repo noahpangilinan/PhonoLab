@@ -24,24 +24,25 @@ TextGrids are read and written in Praat's own formats, so you can move between P
 6. [Measurements and queries](#measurements-and-queries)
 7. [Correcting analyses](#correcting-analyses)
 8. [Working with tiers](#working-with-tiers)
-9. [Editing the audio](#editing-the-audio)
-10. [Editing tier files](#editing-tier-files)
-11. [Long recordings](#long-recordings)
-12. [Manipulation (PSOLA)](#manipulation-psola)
-13. [Sound operations, recording and synthesis](#sound-operations-recording-and-synthesis)
-14. [Batch measurement](#batch-measurement)
-15. [Scripting (Praat and Python)](#scripting-praat-and-python)
-16. [Publication figures](#publication-figures)
-17. [Analysis settings and defaults](#analysis-settings-and-defaults)
-18. [Keyboard shortcuts](#keyboard-shortcuts)
-19. [Menu reference](#menu-reference)
-20. [How results relate to Praat](#how-results-relate-to-praat)
-21. [Files, formats and preferences](#files-formats-and-preferences)
-22. [Architecture](#architecture)
-23. [Development](#development)
-24. [Troubleshooting](#troubleshooting)
-25. [Not yet covered](#not-yet-covered)
-26. [License](#license)
+9. [Speech synthesis and alignment](#speech-synthesis-and-alignment)
+10. [Editing the audio](#editing-the-audio)
+11. [Editing tier files](#editing-tier-files)
+12. [Long recordings](#long-recordings)
+13. [Manipulation (PSOLA)](#manipulation-psola)
+14. [Sound operations, recording and synthesis](#sound-operations-recording-and-synthesis)
+15. [Batch measurement](#batch-measurement)
+16. [Scripting (Praat and Python)](#scripting-praat-and-python)
+17. [Publication figures](#publication-figures)
+18. [Analysis settings and defaults](#analysis-settings-and-defaults)
+19. [Keyboard shortcuts](#keyboard-shortcuts)
+20. [Menu reference](#menu-reference)
+21. [How results relate to Praat](#how-results-relate-to-praat)
+22. [Files, formats and preferences](#files-formats-and-preferences)
+23. [Architecture](#architecture)
+24. [Development](#development)
+25. [Troubleshooting](#troubleshooting)
+26. [Not yet covered](#not-yet-covered)
+27. [License](#license)
 
 ---
 
@@ -324,6 +325,19 @@ and shimmer lines for it.
 | Make intervals from points | *Annotate ▸ Convert tier to intervals*. Each interval takes the label of the point starting it. |
 | Save one tier as a TextGrid | *Annotate ▸ Extract tier to file…* |
 | Add the tiers of another TextGrid | *Annotate ▸ Merge TextGrid file…*. It must cover the same time. |
+
+## Speech synthesis and alignment
+
+*Sound ▸ Synthesize speech…* speaks typed text in any of 133 languages, using eSpeak inside the bundled Praat,
+and opens the sound with a TextGrid of its sentences, clauses, words and phonemes.
+
+*Annotate ▸ Align interval…* finds the words and phonemes of the selected interval's text, and *Align all
+intervals on tier…* does it for every labelled interval. Results go on tiers named after the source, such as
+`sentence_words` and `sentence_phonemes`. Aligning again replaces only that stretch, and it's one undo step.
+
+Alignment works by comparing your recording with a synthetic reading of the text, so treat its boundaries as
+a good first pass to check by hand rather than as final phonetic segmentation. Both tools need the bundled
+Praat program.
 
 ## Editing the audio
 
