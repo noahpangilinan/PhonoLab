@@ -4,9 +4,9 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import numpy as np  # noqa: E402
 import pytest  # noqa: E402
-from PyQt6.QtCore import QSettings, Qt  # noqa: E402
-from PyQt6.QtGui import QAction  # noqa: E402
-from PyQt6.QtWidgets import QApplication, QMessageBox  # noqa: E402
+from PyQt6.QtCore import QEvent, QPointF, QSettings, Qt  # noqa: E402
+from PyQt6.QtGui import QAction, QCloseEvent, QMouseEvent  # noqa: E402
+from PyQt6.QtWidgets import QApplication, QFileDialog, QInputDialog, QMessageBox  # noqa: E402
 
 from phonolab.core.textgrid import TextGrid  # noqa: E402
 from phonolab.ui.theme import configure_pyqtgraph  # noqa: E402
@@ -573,3 +573,151 @@ def test_correcting_needs_a_selection_and_prompts_on_close(window, wav, monkeypa
     )
     window.close_tab(0)
     assert asked == ["Unsaved corrections"]
+
+
+def test_loudness_edit_is_undoable_and_labelled(window, qtbot, wav):
+    window.open_sound(str(wav))
+    editor = window.editor
+    window._show_manipulation()
+    qtbot.waitUntil(lambda: editor.doc.manipulation is not None, timeout=15000)
+    state = editor.doc.manipulation
+    editor.axis.set_selection(0.2, 0.4)
+    editor.set_loudness(6.0)
+    assert len(state.gain) > 0 and state.is_modified
+    assert any("loudness" in label.toPlainText() for label in editor.manipulation_pane.duration_labels)
+    editor.doc.undo_stack.undo()
+    assert len(state.gain) == 0
+
+
+def test_tier_window_edits_and_saves(window, qtbot, tmp_path):
+    from phonolab.core.tiers import read_tier
+    from tests.test_tiers import make
+
+    path = tmp_path / "t.PitchTier"
+    make().save(path)
+    window.open_path(str(path))
+    from phonolab.ui.tier_window import TierWindow
+
+    tier_window = window.findChild(TierWindow)
+    assert tier_window is not None and len(tier_window.tier) == 2
+    tier_window.add_point(1.0, 150.0)
+    assert len(tier_window.tier) == 3 and tier_window.selected == 1 and tier_window.dirty
+    tier_window.remove_selected()
+    assert len(tier_window.tier) == 2
+    tier_window.undo()
+    assert len(tier_window.tier) == 3
+    assert tier_window.save() and not tier_window.dirty
+    assert len(read_tier(path).tier) == 3
+    tier_window.close()
+
+
+def open_tier_window(window, tmp_path):
+    from phonolab.ui.tier_window import TierWindow
+    from tests.test_tiers import make
+
+    path = tmp_path / "t.PitchTier"
+    make().save(path)
+    window.open_path(str(path))
+    return window.findChild(TierWindow)
+
+
+def mouse(widget, kind, point, buttons, modifiers=Qt.KeyboardModifier.NoModifier):
+    button = Qt.MouseButton.NoButton if kind == QEvent.Type.MouseMove else Qt.MouseButton.LeftButton
+    event = QMouseEvent(kind, QPointF(point), QPointF(widget.mapToGlobal(point)), button, buttons, modifiers)
+    QApplication.sendEvent(widget, event)
+
+
+def scene_point(tier_window, time, value):
+    plot = tier_window.plot
+    return plot.mapFromScene(plot.getViewBox().mapViewToScene(QPointF(time, value)))
+
+
+def test_dragging_a_tier_point_with_the_mouse(window, qtbot, tmp_path):
+    tier_window = open_tier_window(window, tmp_path)
+    qtbot.waitExposed(tier_window)
+    viewport, left = tier_window.plot.viewport(), Qt.MouseButton.LeftButton
+    start, end = scene_point(tier_window, 0.5, 100), scene_point(tier_window, 0.8, 150)
+    mouse(viewport, QEvent.Type.MouseButtonPress, start, left)
+    for step in (0.3, 0.7, 1.0):
+        mouse(viewport, QEvent.Type.MouseMove, start + (end - start) * step, left)
+    mouse(viewport, QEvent.Type.MouseButtonRelease, end, Qt.MouseButton.NoButton)
+    assert tier_window.tier.times[0] == pytest.approx(0.8, abs=0.02)
+    assert tier_window.tier.values[0] == pytest.approx(150, abs=3)
+    assert tier_window.dirty and len(tier_window.history) == 1
+    tier_window.undo()
+    assert tier_window.tier.times[0] == pytest.approx(0.5)
+    tier_window.dirty = False
+
+
+def test_dragging_empty_space_changes_nothing(window, qtbot, tmp_path):
+    tier_window = open_tier_window(window, tmp_path)
+    qtbot.waitExposed(tier_window)
+    viewport, left = tier_window.plot.viewport(), Qt.MouseButton.LeftButton
+    start, end = scene_point(tier_window, 1.0, 110), scene_point(tier_window, 1.3, 130)
+    mouse(viewport, QEvent.Type.MouseButtonPress, start, left)
+    mouse(viewport, QEvent.Type.MouseMove, (start + end) / 2, left)
+    mouse(viewport, QEvent.Type.MouseMove, end, left)
+    mouse(viewport, QEvent.Type.MouseButtonRelease, end, Qt.MouseButton.NoButton)
+    assert not tier_window.dirty and not tier_window.history
+
+
+@pytest.mark.parametrize("closer", ["close", "reject"])
+def test_tier_window_asks_before_losing_edits(window, tmp_path, monkeypatch, closer):
+    tier_window = open_tier_window(window, tmp_path)
+    tier_window.add_point(1.0, 150.0)
+    asked = []
+    buttons = QMessageBox.StandardButton
+    monkeypatch.setattr(QMessageBox, "question", lambda *a: asked.append(a) or buttons.Cancel)
+    tier_window.show()
+    getattr(tier_window, closer)()
+    assert asked and tier_window.isVisible()
+    monkeypatch.setattr(QMessageBox, "question", lambda *a: buttons.Discard)
+    getattr(tier_window, closer)()
+    assert not tier_window.isVisible()
+
+
+def test_closing_the_app_can_be_stopped_by_an_unsaved_tier(window, tmp_path, monkeypatch):
+    tier_window = open_tier_window(window, tmp_path)
+    tier_window.add_point(1.0, 150.0)
+    tier_window.show()
+    buttons = QMessageBox.StandardButton
+    monkeypatch.setattr(QMessageBox, "question", lambda *a: buttons.Cancel)
+    event = QCloseEvent()
+    window.closeEvent(event)
+    assert not event.isAccepted() and tier_window.isVisible()
+    tier_window.dirty = False
+
+
+def test_loudness_menu_and_saving_the_pitch_tier(window, qtbot, wav, tmp_path, monkeypatch):
+    from phonolab.core.tiers import read_tier
+
+    window.open_sound(str(wav))
+    editor = window.editor
+    window._show_manipulation()
+    qtbot.waitUntil(lambda: editor.doc.manipulation is not None, timeout=15000)
+    editor.axis.set_selection(0.2, 0.4)
+    monkeypatch.setattr(QInputDialog, "getDouble", lambda *a: (-6.0, True))
+    window._set_loudness()
+    assert -6.0 in editor.doc.manipulation.gain.values
+    target = tmp_path / "saved.PitchTier"
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *a: (str(target), ""))
+    window._save_pitch_tier()
+    saved = read_tier(target)
+    assert saved.object_class == "PitchTier" and saved.tier == editor.doc.manipulation.pitch
+    assert saved.xmax == pytest.approx(editor.doc.sound.duration)
+
+
+def test_changing_loudness_invalidates_the_resynthesis(window, qtbot, wav):
+    window.open_sound(str(wav))
+    editor = window.editor
+    window._show_manipulation()
+    qtbot.waitUntil(lambda: editor.doc.manipulation is not None, timeout=15000)
+    results = []
+    editor._with_resynthesis(lambda samples, sr: results.append(samples))
+    qtbot.waitUntil(lambda: len(results) == 1, timeout=20000)
+    editor.axis.set_selection(0.2, 0.4)
+    editor.set_loudness(-12.0)
+    editor._with_resynthesis(lambda samples, sr: results.append(samples))
+    qtbot.waitUntil(lambda: len(results) == 2, timeout=20000)
+    assert results[1] is not results[0]
+    assert np.abs(results[1]).sum() < np.abs(results[0]).sum()

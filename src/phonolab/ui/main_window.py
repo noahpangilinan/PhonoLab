@@ -37,6 +37,8 @@ from phonolab.core.sound import (
 )
 from phonolab.core.spectrum import SpectrumSettings
 from phonolab.core.textgrid import TextGrid, TextGridError
+from phonolab.core.tiers import SUFFIXES as TIER_SUFFIXES
+from phonolab.core.tiers import TierFile, TierFileError, read_tier
 from phonolab.ui.dialogs.batch_dialog import BatchDialog
 from phonolab.ui.dialogs.figure_dialog import FigureDialog
 from phonolab.ui.dialogs.formant_path_dialog import FormantPathDialog
@@ -51,12 +53,14 @@ from phonolab.ui.script_window import ScriptWindow
 from phonolab.ui.spectrum_panel import SpectrumPanel
 from phonolab.ui.start_page import StartPage
 from phonolab.ui.theme import THEME_CHOICES, apply_theme
+from phonolab.ui.tier_window import TierWindow
 from phonolab.ui.views_panel import ViewsPanel
 
 log = logging.getLogger(__name__)
 
 RELEASE_DELAY_MS = 300
 SOUND_FILTER = "Sound files (" + " ".join(f"*{e}" for e in SUPPORTED_EXTENSIONS) + ");;All files (*)"
+TIER_FILTER = "Praat tiers (*.PitchTier *.DurationTier *.IntensityTier *.AmplitudeTier *.RealTier);;All files (*)"
 TEXTGRID_FILTER = "TextGrid files (*.TextGrid *.textgrid);;All files (*)"
 
 SHORTCUTS = [
@@ -224,6 +228,12 @@ class MainWindow(QMainWindow):
             tip="Attach an existing TextGrid to the current sound",
         )
         self._action(m, "&New TextGrid…", self.new_textgrid, "Ctrl+Shift+N", needs=e)
+        self._action(
+            m,
+            "Open t&ier…",
+            self.open_tier_dialog,
+            tip="Open a Praat PitchTier, DurationTier, IntensityTier, AmplitudeTier or RealTier",
+        )
         m.addSeparator()
         self._action(m, "&Save TextGrid", self.save_textgrid, QKeySequence.StandardKey.Save, needs=tg)
         self._action(m, "Save TextGrid &As…", self.save_textgrid_as, "Ctrl+Shift+S", needs=tg)
@@ -384,7 +394,17 @@ class MainWindow(QMainWindow):
             needs=e,
             tip="Lengthen (>1) or shorten (<1) the selected stretch",
         )
+        self._action(
+            m,
+            "Set &loudness of selection…",
+            self._set_loudness,
+            needs=e,
+            tip="Make the selected stretch louder or quieter, in dB",
+        )
         self._action(m, "Re&set manipulation", lambda: self.editor.reset_manipulation(), needs=e)
+        self._action(
+            m, "Save pitch &tier…", self._save_pitch_tier, needs=e, tip="Save the edited contour as a Praat PitchTier"
+        )
         m.addSeparator()
         self._action(m, "Manipulation settings…", self._edit_manipulation_settings, needs=e)
 
@@ -583,8 +603,11 @@ class MainWindow(QMainWindow):
         return str(self.qsettings.value("last_dir", str(Path.home())))
 
     def open_path(self, path: str):
-        if Path(path).suffix.lower() == ".textgrid":
+        suffix = Path(path).suffix.lower()
+        if suffix == ".textgrid":
             self.open_textgrid(path)
+        elif suffix in TIER_SUFFIXES:
+            self.open_tier(path)
         else:
             self.open_sound(path)
 
@@ -871,6 +894,10 @@ class MainWindow(QMainWindow):
             if not self._confirm_discard(editor):
                 ev.ignore()
                 return
+        for tier_window in self.findChildren(TierWindow):
+            if not tier_window.close():
+                ev.ignore()
+                return
         self.player.stop()
         for editor in self.editors():
             editor.manager.close()
@@ -966,6 +993,37 @@ class MainWindow(QMainWindow):
         factor = self._ask_number("Set duration", "Relative duration (1 = unchanged):", 1.5, 0.05, 20.0)
         if factor is not None:
             self.editor.set_duration_factor(factor)
+
+    def _set_loudness(self):
+        decibels = self._ask_number("Set loudness", "Change by (dB):", 6.0, -60.0, 60.0, 1)
+        if decibels is not None:
+            self.editor.set_loudness(decibels)
+
+    def _save_pitch_tier(self):
+        editor = self.editor
+        state = editor.doc.manipulation
+        if state is None:
+            self.show_message("Show the manipulation first")
+            return
+        path = self._save_path("Save pitch tier", ".PitchTier", "PitchTier (*.PitchTier)")
+        if path:
+            tier = TierFile("PitchTier", 0.0, editor.doc.sound.duration, state.pitch)
+            self._run_export(lambda: tier.save(path), path)
+
+    def open_tier_dialog(self):
+        path, _ = QFileDialog.getOpenFileName(self, "Open tier", self._last_dir(), TIER_FILTER)
+        if path:
+            self.open_tier(path)
+
+    def open_tier(self, path: str):
+        try:
+            tier = read_tier(path)
+        except (OSError, TierFileError) as err:
+            QMessageBox.warning(self, "Could not open tier", str(err))
+            return
+        window = TierWindow(tier, Path(path), self)
+        window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        window.show()
 
     def _edit_manipulation_settings(self):
         dialog = SettingsDialog(self.editor.manipulation_settings, self)

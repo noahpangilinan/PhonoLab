@@ -23,22 +23,23 @@ TextGrids are read and written in Praat's own formats, so you can move between P
 5. [Annotation (TextGrids)](#annotation-textgrids)
 6. [Measurements and queries](#measurements-and-queries)
 7. [Correcting analyses](#correcting-analyses)
-8. [Long recordings](#long-recordings)
-9. [Manipulation (PSOLA)](#manipulation-psola)
-10. [Sound operations, recording and synthesis](#sound-operations-recording-and-synthesis)
-11. [Batch measurement](#batch-measurement)
-12. [Scripting (Praat and Python)](#scripting-praat-and-python)
-13. [Publication figures](#publication-figures)
-14. [Analysis settings and defaults](#analysis-settings-and-defaults)
-15. [Keyboard shortcuts](#keyboard-shortcuts)
-16. [Menu reference](#menu-reference)
-17. [How results relate to Praat](#how-results-relate-to-praat)
-18. [Files, formats and preferences](#files-formats-and-preferences)
-19. [Architecture](#architecture)
-20. [Development](#development)
-21. [Troubleshooting](#troubleshooting)
-22. [Not yet covered](#not-yet-covered)
-23. [License](#license)
+8. [Editing tier files](#editing-tier-files)
+9. [Long recordings](#long-recordings)
+10. [Manipulation (PSOLA)](#manipulation-psola)
+11. [Sound operations, recording and synthesis](#sound-operations-recording-and-synthesis)
+12. [Batch measurement](#batch-measurement)
+13. [Scripting (Praat and Python)](#scripting-praat-and-python)
+14. [Publication figures](#publication-figures)
+15. [Analysis settings and defaults](#analysis-settings-and-defaults)
+16. [Keyboard shortcuts](#keyboard-shortcuts)
+17. [Menu reference](#menu-reference)
+18. [How results relate to Praat](#how-results-relate-to-praat)
+19. [Files, formats and preferences](#files-formats-and-preferences)
+20. [Architecture](#architecture)
+21. [Development](#development)
+22. [Troubleshooting](#troubleshooting)
+23. [Not yet covered](#not-yet-covered)
+24. [License](#license)
 
 ---
 
@@ -311,6 +312,12 @@ sound; it loads when the sound opens, and batch measurement uses it too, marking
 The voice report's period range is fixed, so choosing your own (*Analysis ▸ Voice settings*) adds extra jitter
 and shimmer lines for it.
 
+## Editing tier files
+
+*File ▸ Open tier…* opens a Praat PitchTier, DurationTier, IntensityTier, AmplitudeTier or RealTier saved as
+text. Drag points, Ctrl+click to add one, press Delete to remove the selected one, and Ctrl+Z to undo.
+*Manipulation ▸ Save pitch tier…* saves an edited contour in the same format.
+
 ## Long recordings
 
 Files over about 20 minutes of stereo audio (100 million sample values) open as long recordings. PhonoLab
@@ -350,6 +357,7 @@ Manipulation changes the pitch and timing of a recording while keeping its voice
    | Shift | *Shift pitch…* by semitones (the selection, or everything) |
    | Flatten | *Flatten pitch* sets the selection (or everything) to its mean, i.e. a monotone |
    | Lengthen or shorten | Select a stretch, then *Set duration of selection…* (for example 1.5 for 50 % longer). The pane labels it "duration ×1.5". |
+   | Change loudness | Select a stretch, then *Set loudness of selection…* (in dB). The pane labels it. |
    | Start over | *Reset manipulation* |
 
    Every edit can be undone with Ctrl+Z, in the same history as annotation edits. Manipulation edits never
