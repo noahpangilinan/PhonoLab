@@ -23,7 +23,7 @@ from PyQt6.QtWidgets import (
 
 from phonolab import __version__
 from phonolab.audio.player import AudioPlayer
-from phonolab.core import praat_engine, sound_ops, speech
+from phonolab.core import corpus, praat_engine, sound_ops, speech
 from phonolab.core.batch import BatchOptions
 from phonolab.core.figures import FigureSettings
 from phonolab.core.registry import ANALYSES
@@ -229,6 +229,24 @@ class MainWindow(QMainWindow):
             "Ctrl+Shift+O",
             needs=e,
             tip="Attach an existing TextGrid to the current sound",
+        )
+        c = m.addMenu("Open from &corpus")
+        for name in corpus.CORPORA:
+            self._action(
+                c,
+                f"{name} recording…",
+                lambda _=False, n=name: self.open_corpus_recording(n),
+                tip=f"Open a {name} sound with the annotation files beside it",
+            )
+        c.addSeparator()
+        self._action(c, "ESPS label file as intervals…", lambda: self.open_annotation_file("esps"), needs=e)
+        self._action(c, "ESPS label file as points…", lambda: self.open_annotation_file("esps points"), needs=e)
+        self._action(
+            c,
+            "Annotation file with Praat…",
+            lambda: self.open_annotation_file("praat"),
+            needs=e,
+            tip="Any annotation file Praat can read, such as a CGN syntax file",
         )
         self._action(m, "&New TextGrid…", self.new_textgrid, "Ctrl+Shift+N", needs=e)
         self._action(
@@ -741,6 +759,43 @@ class MainWindow(QMainWindow):
             self.editor.doc.edit("Merge TextGrid", lambda grid: merge_tiers(grid, other))
         except (OSError, TextGridError) as err:
             QMessageBox.warning(self, "Could not merge TextGrid", str(err))
+
+    def open_corpus_recording(self, name: str):
+        path, _ = QFileDialog.getOpenFileName(self, f"Open {name} recording", self._last_dir(), SOUND_FILTER)
+        if not path:
+            return
+        try:
+            grid = corpus.read_adjacent(path, name)
+        except corpus.CorpusError as err:
+            QMessageBox.warning(self, f"Could not read {name} annotations", str(err))
+            return
+        self.open_sound(path)
+        self.editor.doc.set_textgrid(grid, saved=False)
+
+    def open_annotation_file(self, kind: str):
+        """Annotations for the current sound, which become a new, unsaved TextGrid."""
+        path, _ = QFileDialog.getOpenFileName(self, "Open annotation file", self._last_dir(), "All files (*)")
+        if not path:
+            return
+        doc = self.editor.doc
+        if doc.textgrid_dirty and not self._replace_textgrid_ok():
+            return
+        try:
+            if kind == "praat":
+                grid = corpus.read_with_praat(path)
+            else:
+                grid = corpus.read_esps(path, points=kind == "esps points")
+        except corpus.CorpusError as err:
+            QMessageBox.warning(self, "Could not read annotations", str(err))
+            return
+        doc.set_textgrid(grid, saved=False)
+
+    def _replace_textgrid_ok(self) -> bool:
+        buttons = QMessageBox.StandardButton
+        answer = QMessageBox.question(
+            self, "Unsaved annotations", "Replace the unsaved TextGrid of this sound?", buttons.Yes | buttons.Cancel
+        )
+        return answer == buttons.Yes
 
     def open_textgrid_dialog(self):
         path, _ = QFileDialog.getOpenFileName(self, "Open TextGrid", self._last_dir(), TEXTGRID_FILTER)

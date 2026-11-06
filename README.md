@@ -24,25 +24,26 @@ TextGrids are read and written in Praat's own formats, so you can move between P
 6. [Measurements and queries](#measurements-and-queries)
 7. [Correcting analyses](#correcting-analyses)
 8. [Working with tiers](#working-with-tiers)
-9. [Speech synthesis and alignment](#speech-synthesis-and-alignment)
-10. [Editing the audio](#editing-the-audio)
-11. [Editing tier files](#editing-tier-files)
-12. [Long recordings](#long-recordings)
-13. [Manipulation (PSOLA)](#manipulation-psola)
-14. [Sound operations, recording and synthesis](#sound-operations-recording-and-synthesis)
-15. [Batch measurement](#batch-measurement)
-16. [Scripting (Praat and Python)](#scripting-praat-and-python)
-17. [Publication figures](#publication-figures)
-18. [Analysis settings and defaults](#analysis-settings-and-defaults)
-19. [Keyboard shortcuts](#keyboard-shortcuts)
-20. [Menu reference](#menu-reference)
-21. [How results relate to Praat](#how-results-relate-to-praat)
-22. [Files, formats and preferences](#files-formats-and-preferences)
-23. [Architecture](#architecture)
-24. [Development](#development)
-25. [Troubleshooting](#troubleshooting)
-26. [Not yet covered](#not-yet-covered)
-27. [License](#license)
+9. [Corpus files](#corpus-files)
+10. [Speech synthesis and alignment](#speech-synthesis-and-alignment)
+11. [Editing the audio](#editing-the-audio)
+12. [Editing tier files](#editing-tier-files)
+13. [Long recordings](#long-recordings)
+14. [Manipulation (PSOLA)](#manipulation-psola)
+15. [Sound operations, recording and synthesis](#sound-operations-recording-and-synthesis)
+16. [Batch measurement](#batch-measurement)
+17. [Scripting (Praat and Python)](#scripting-praat-and-python)
+18. [Publication figures](#publication-figures)
+19. [Analysis settings and defaults](#analysis-settings-and-defaults)
+20. [Keyboard shortcuts](#keyboard-shortcuts)
+21. [Menu reference](#menu-reference)
+22. [How results relate to Praat](#how-results-relate-to-praat)
+23. [Files, formats and preferences](#files-formats-and-preferences)
+24. [Architecture](#architecture)
+25. [Development](#development)
+26. [Troubleshooting](#troubleshooting)
+27. [Not yet covered](#not-yet-covered)
+28. [License](#license)
 
 ---
 
@@ -325,6 +326,14 @@ and shimmer lines for it.
 | Make intervals from points | *Annotate ▸ Convert tier to intervals*. Each interval takes the label of the point starting it. |
 | Save one tier as a TextGrid | *Annotate ▸ Extract tier to file…* |
 | Add the tiers of another TextGrid | *Annotate ▸ Merge TextGrid file…*. It must cover the same time. |
+
+## Corpus files
+
+*File ▸ Open from corpus* opens a TIMIT or Buckeye recording together with the annotation files beside it. Praat
+reads them, so you get the same tiers it gives, including TIMIT phones as IPA. It can also read an ESPS (xwaves)
+label file for the current sound, and *Annotation file with Praat…* takes any other annotation file Praat
+recognises. CGN's own `.awd`, `.fon` and `.ort` annotations are TextGrids, so *Open TextGrid…* opens those.
+CGN syntax files go through *Annotation file with Praat…*, which hasn't been tested on real CGN files.
 
 ## Speech synthesis and alignment
 
