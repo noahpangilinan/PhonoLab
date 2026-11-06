@@ -342,10 +342,17 @@ class MainWindow(QMainWindow):
         m.addAction(self.views_panel.toggleViewAction())
         m.addAction(self.log_panel.toggleViewAction())
 
+        self.channel_menu = m.addMenu("Analyse &channel")
+        self.channel_menu.aboutToShow.connect(self._fill_channel_menu)
+        self._fill_channel_menu()
+
         m = mb.addMenu("&Play")
         self._action(m, "&Play / Stop", lambda: self.editor.toggle_playback(), ["Space", "Tab"], needs=e)
         self._action(m, "&Stop", lambda: self.editor.stop(), "Esc", needs=e)
         self._action(m, "Play &whole sound", lambda: self.editor.play(0, self.editor.doc.sound.duration), needs=e)
+        self.mute_menu = m.addMenu("&Mute channel")
+        self.mute_menu.aboutToShow.connect(self._fill_mute_menu)
+        self._fill_mute_menu()
 
         m = mb.addMenu("&Sound")
         self._action(
@@ -657,6 +664,48 @@ class MainWindow(QMainWindow):
     def _on_system_colours_changed(self):
         if self.prefs.theme() == "system":
             self._apply_theme()
+
+    def _channels(self) -> int:
+        return self.editor.doc.sound.n_channels if self.editor else 0
+
+    def _fill_channel_menu(self):
+        """Filled as it opens, because it depends on the current tab."""
+        menu = self.channel_menu
+        menu.clear()
+        if self._channels() < 2:
+            menu.addAction("Mix of all channels").setEnabled(False)
+            return
+        doc = self.editor.doc
+        for label, channel in (
+            ("Mix of all channels", None),
+            *((f"Channel {c + 1}", c) for c in range(self._channels())),
+        ):
+            action = menu.addAction(label, lambda c=channel: self.set_analysis_channel(c))
+            action.setCheckable(True)
+            action.setChecked(channel == doc.analysis_channel)
+
+    def set_analysis_channel(self, channel: int | None):
+        state = self.editor.doc.manipulation
+        if state is not None and state.is_modified:
+            buttons = QMessageBox.StandardButton
+            answer = QMessageBox.question(
+                self, "Change channel", "This starts the manipulation again. Carry on?", buttons.Yes | buttons.Cancel
+            )
+            if answer != buttons.Yes:
+                return
+        self.editor.set_analysis_channel(channel)
+
+    def _fill_mute_menu(self):
+        menu = self.mute_menu
+        menu.clear()
+        if self._channels() < 2:
+            menu.addAction("Only one channel").setEnabled(False)
+            return
+        for c in range(self._channels()):
+            action = menu.addAction(f"Channel {c + 1}")
+            action.setCheckable(True)
+            action.setChecked(c in self.editor.muted)
+            action.toggled.connect(lambda on, ch=c: self.editor.set_channel_muted(ch, on))
 
     def copy_sound(self):
         self.sound_clip = self.editor.copy_selection() or self.sound_clip

@@ -77,6 +77,7 @@ class WaveformPane(TimePane):
         self.pulse_marks.setZValue(5)
         self.addItem(self.pulse_marks)
         self.pulse_times = np.zeros(0)
+        self._analysed, self._muted = None, set()
         self._stack_channels()
         self.view_updated(*axis.view)
 
@@ -96,10 +97,25 @@ class WaveformPane(TimePane):
         for c, curve in enumerate(self.curves):
             curve.setPos(0, -spacing * c)
         self.vb.setYRange(-spacing * (n - 1) - self.peak, self.peak, padding=0.05)
-        if n > 1:
-            labels = [(-spacing * c, f"ch {c + 1}") for c in range(n)]
-            self.getPlotItem().getAxis("left").setTicks([labels, []])
         self._pulse_span = (-spacing * (n - 1) - self.peak, self.peak)
+        self.mark_channels(self._analysed, self._muted)
+
+    def mark_channels(self, analysed: int | None, muted: set[int]):
+        """Show which channel is measured and which are muted, beside each trace."""
+        self._analysed, self._muted = analysed, set(muted)
+        n = len(self.curves)
+        if n < 2:
+            return
+        spacing = 2 * self.peak
+        labels = []
+        for c in range(n):
+            text = f"ch {c + 1}"
+            if c == analysed:
+                text += " ●"
+            if c in muted:
+                text += " muted"
+            labels.append((-spacing * c, text))
+        self.getPlotItem().getAxis("left").setTicks([labels, []])
 
     def set_sound(self, sound: Sound):
         self._read(sound)

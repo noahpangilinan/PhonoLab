@@ -184,7 +184,10 @@ class SoundEditor(QWidget):
         self.player = player
         sound = doc.sound
         self.axis = TimeAxisController(sound.duration, self)
-        self.manager = AnalysisManager(sound, {name: prefs.analysis_settings(name) for name in registry.ANALYSES}, self)
+        self.manager = AnalysisManager(
+            doc.analysis_sound, {name: prefs.analysis_settings(name) for name in registry.ANALYSES}, self
+        )
+        self.muted: set[int] = set()
         self.manager.busy_changed.connect(self.busy_changed)
         self.manager.error.connect(lambda name, msg: self.message.emit(f"{name.title()} failed: {msg}"))
 
@@ -280,13 +283,47 @@ class SoundEditor(QWidget):
         sound = self.doc.sound
         self.stop()
         self._resynthesis = self._after_resynthesis = None
-        self.manager.set_sound(sound)
+        self.manager.set_sound(self.doc.analysis_sound)
         self.waveform.set_sound(sound)
         self.overview.set_sound(sound)
         self.axis.set_duration(sound.duration)
         self.manipulation_pane.set_state(self.doc.manipulation)
         if self.manipulation_pane.isVisible():
             self.ensure_manipulation()
+
+    def set_analysis_channel(self, channel: int | None) -> None:
+        """Measure one channel, or the mix (None). The manipulation comes from the old audio, so it starts again."""
+        doc = self.doc
+        if channel == doc.analysis_channel:
+            return
+        if doc.sound.is_long:
+            self.message.emit("Long recordings are analysed as a mix: extract a part to analyse one channel")
+            return
+        doc.analysis_channel = channel
+        doc.manipulation = None
+        self._resynthesis = self._after_resynthesis = None
+        self.manager.set_sound(doc.analysis_sound)
+        self.manipulation_pane.set_state(None)
+        if self.manipulation_pane.isVisible():
+            self.ensure_manipulation()
+        self.waveform.mark_channels(channel, self.muted)
+        self.axis.selection_changed.emit(self.axis.selection)  # the spectrum panel follows this
+        self.axis.view_changed.emit(*self.axis.view)
+        self.message.emit(
+            "Analysing the mix of all channels" if channel is None else f"Analysing channel {channel + 1}"
+        )
+
+    def channel_gains(self) -> np.ndarray | None:
+        if not self.muted:
+            return None
+        gains = np.ones(self.doc.sound.n_channels, dtype=np.float32)
+        gains[list(self.muted)] = 0
+        return gains
+
+    def set_channel_muted(self, channel: int, muted: bool) -> None:
+        (self.muted.add if muted else self.muted.discard)(channel)
+        self.player.set_gains(self.channel_gains())
+        self.waveform.mark_channels(self.doc.analysis_channel, self.muted)
 
     def _selected_samples(self) -> tuple[int, int] | None:
         if self.axis.selection is None:
@@ -605,7 +642,7 @@ class SoundEditor(QWidget):
 
     def stylize_pitch(self, semitones: float = 2.0):
         if state := self._require_manipulation():
-            pitch = manipulation.stylize(state.pitch, semitones, self.doc.sound)
+            pitch = manipulation.stylize(state.pitch, semitones, self.doc.analysis_sound)
             state.apply(f"Stylize pitch ({semitones:g} st)", pitch=pitch)
 
     def shift_pitch(self, semitones: float):
@@ -706,10 +743,12 @@ class SoundEditor(QWidget):
         if not self.player.available:
             self.message.emit("No audio output device available")
             return
+        gains = None
         if samples is None:
             samples, sampling_rate = self.doc.sound.samples, self.doc.sound.sampling_rate
+            gains = self.channel_gains()
         try:
-            self.player.play(samples, sampling_rate, start, end)
+            self.player.play(samples, sampling_rate, start, end, gains)
         except Exception as e:  # sounddevice raises PortAudioError for device problems
             self.message.emit(f"Playback failed: {e}")
             return
@@ -821,7 +860,9 @@ class SoundEditor(QWidget):
         else:
             values = queries.formants_at(f, self.axis.cursor)
             try:
-                bws = queries.formant_bandwidths_at(self.doc.sound, self.manager.settings["formants"], self.axis.cursor)
+                bws = queries.formant_bandwidths_at(
+                    self.doc.analysis_sound, self.manager.settings["formants"], self.axis.cursor
+                )
             except Exception:  # cursor too close to the edges for a Burg window
                 bws = [float("nan")] * len(values)
             parts = [
@@ -847,7 +888,7 @@ class SoundEditor(QWidget):
         """Praat's voice report over the selection (or the visible window)."""
         start, end = self.axis.selection or self.axis.view
         report = voice.voice_report(
-            self.doc.sound, self.manager.settings["pitch"], self.manager.settings["pulses"], start, end,
+            self.doc.analysis_sound, self.manager.settings["pitch"], self.manager.settings["pulses"], start, end,
             self.doc.corrections,
         )  # fmt: skip
         header = f"Voice report for {self.doc.sound.name}, {start:.4f}–{end:.4f} s:"

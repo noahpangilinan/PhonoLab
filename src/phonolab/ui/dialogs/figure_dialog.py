@@ -160,7 +160,7 @@ class FigureDialog(QDialog):
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             doc = self.editor.doc
-            self.figure = figures.make_figure(doc.sound, doc.textgrid, self.request())
+            self.figure = figures.make_figure(doc.analysis_sound, doc.textgrid, self.request())
             buffer = io.BytesIO()
             self.figure.savefig(buffer, format="png", dpi=PREVIEW_DPI)
         except Exception as e:  # e.g. nothing to draw, a range too short for analysis

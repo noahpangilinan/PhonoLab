@@ -19,8 +19,9 @@ log = logging.getLogger(__name__)
 class PlaybackBuffer:
     """Hands out consecutive blocks of ``samples[start:end]``; no audio device needed."""
 
-    def __init__(self, samples: np.ndarray, start: int, end: int):
+    def __init__(self, samples: np.ndarray, start: int, end: int, gains: np.ndarray | None = None):
         self.samples = samples
+        self.gains = gains  # one per channel; read for every block, so muting works during playback
         self.start = max(0, start)
         self.end = min(len(samples), end)
         self.frame = self.start
@@ -32,7 +33,8 @@ class PlaybackBuffer:
     def fill(self, out: np.ndarray) -> int:
         """Copy the next block into ``out`` (zero-padded). Returns frames written."""
         n = max(0, min(len(out), self.end - self.frame))
-        out[:n] = self.samples[self.frame : self.frame + n]
+        block = self.samples[self.frame : self.frame + n]
+        out[:n] = block if self.gains is None else block * self.gains
         out[n:] = 0
         self.frame += n
         return n
@@ -75,7 +77,14 @@ class AudioPlayer(QObject):
         start, end = self._buffer.start / self._sr, self._buffer.end / self._sr
         return min(start + elapsed, end)
 
-    def play(self, samples: np.ndarray, sampling_rate: float, start: float, end: float) -> None:
+    def set_gains(self, gains: np.ndarray | None) -> None:
+        """Change channel gains of what's playing now."""
+        if self._buffer is not None:
+            self._buffer.gains = gains
+
+    def play(
+        self, samples: np.ndarray, sampling_rate: float, start: float, end: float, gains: np.ndarray | None = None
+    ) -> None:
         if sd is None:
             raise RuntimeError("Audio output is unavailable (PortAudio not found)")
         self.stop()
@@ -83,7 +92,7 @@ class AudioPlayer(QObject):
             samples = samples[:, np.newaxis]
         samples = np.ascontiguousarray(samples, dtype=np.float32)
         self._sr = float(sampling_rate)
-        buffer = PlaybackBuffer(samples, int(start * self._sr), int(end * self._sr))
+        buffer = PlaybackBuffer(samples, int(start * self._sr), int(end * self._sr), gains)
         if buffer.done:
             return
         self._buffer = buffer

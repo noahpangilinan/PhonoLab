@@ -119,7 +119,7 @@ class SpectrumPanel(QDockWidget):
 
     def _range(self):
         e = self.editor
-        return spectrum.slice_range(e.doc.sound, self.settings, e.axis.cursor, e.axis.selection)
+        return spectrum.slice_range(e.doc.analysis_sound, self.settings, e.axis.cursor, e.axis.selection)
 
     def update_spectrum(self):
         self.result = None
@@ -142,7 +142,7 @@ class SpectrumPanel(QDockWidget):
             "excitation": spectrum.compute_excitation,
         }[kind]
         try:
-            r = fn(self.editor.doc.sound, self.settings, start, end)
+            r = fn(self.editor.doc.analysis_sound, self.settings, start, end)
         except Exception as e:  # Praat raises on degenerate ranges
             log.info("spectrum failed: %s", e)
             self.summary.setText(f"No spectrum: {e}")

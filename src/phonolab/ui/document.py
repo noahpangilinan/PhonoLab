@@ -34,6 +34,9 @@ class Document(QObject):
         self.corrections = Corrections.load_for(sound.path)
         self._saved_corrections = self.corrections
         self._audio_revision = self._saved_audio_revision = 0
+        self.analysis_channel: int | None = None  # None analyses the mix of all channels
+        self._channel_sound: Sound | None = None
+        self._channel_source: tuple | None = None
         # One undo history per document, shared by annotation and pitch/duration edits.
         self.undo_stack = QUndoStack(self)
         self.textgrid_changed.connect(lambda: self.title_changed.emit(self.title))
@@ -45,6 +48,17 @@ class Document(QObject):
     @property
     def is_dirty(self) -> bool:
         return self.textgrid_dirty or self.sound_needs_saving or self.corrections_dirty
+
+    @property
+    def analysis_sound(self) -> Sound:
+        """What measurements see: the mix of all channels, or the one chosen. Everything analysing audio uses this."""
+        sound, channel = self.sound, self.analysis_channel
+        if channel is None or sound.is_long:
+            return sound
+        if self._channel_source != (sound.id, channel):
+            self._channel_sound = Sound(sound.samples[:, channel : channel + 1], sound.sampling_rate, title=sound.name)
+            self._channel_source = (sound.id, channel)
+        return self._channel_sound
 
     @property
     def corrections_dirty(self) -> bool:
