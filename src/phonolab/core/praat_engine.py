@@ -133,6 +133,11 @@ def _remove_folder(folder: str) -> None:
     shutil.rmtree(folder, ignore_errors=True)
 
 
+def remove_folder(folder: Path) -> None:
+    """Delete a results folder from ``analyse_with_files``."""
+    _remove_folder(str(folder))
+
+
 def sound_file(sound: Sound) -> Path:
     """A mono WAV of ``sound`` for Praat to read; removed along with the Sound."""
     path = _wav_files.get(sound)
@@ -147,14 +152,20 @@ def sound_file(sound: Sound) -> Path:
 
 def read_matrix(path: Path) -> tuple[np.ndarray, np.ndarray]:
     """Read Praat's short text Matrix format: returns (x values, rows shaped (ny, nx))."""
+    x, _, values = read_matrix_with_rows(path)
+    return x, values
+
+
+def read_matrix_with_rows(path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Like ``read_matrix``, also giving the y value of each row."""
     with open(path, encoding="utf-8") as fh:
         tokens = fh.read().split("\n")[3:]
     numbers = [line for line in tokens if line.strip()]
     nx, dx, x1 = int(numbers[2]), float(numbers[3]), float(numbers[4])
-    ny = int(numbers[7])
+    ny, dy, y1 = int(numbers[7]), float(numbers[8]), float(numbers[9])
     cells = [float("nan") if n == "--undefined--" else float(n) for n in numbers[10 : 10 + nx * ny]]
     values = np.array(cells, dtype=float).reshape(ny, nx)
-    return x1 + dx * np.arange(nx), values
+    return x1 + dx * np.arange(nx), y1 + dy * np.arange(ny), values
 
 
 def praat_bool(value: bool) -> str:

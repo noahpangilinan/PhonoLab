@@ -18,6 +18,7 @@ from phonolab.core import praat_engine
 from phonolab.core.sound import Sound
 
 _TIME_FIELDS = ("times", "starts", "ends")  # result fields holding times in seconds
+TRACKED_FORMANTS = 3
 
 
 def shift_times(result, offset: float):
@@ -223,6 +224,7 @@ class FormantMethod(Enum):
 class FormantSettings:
     title = "Formants"
     method: FormantMethod = setting(FormantMethod.BURG, "Method")
+    track: bool = setting(False, "Track F1-F3 (keeps them continuous)")
     max_formant: float = setting(5500.0, "Formant ceiling", "Hz", 1000.0, 20000.0)
     n_formants: float = setting(5.0, "Number of formants", "", 1.0, 7.0, decimals=1)
     window_length: float = setting(0.025, "Window length", "s", 0.001, 1.0, decimals=4)
@@ -261,17 +263,27 @@ def formant_command(s: FormantSettings) -> str:
     return f"To Formant (burg): 0, {common}"
 
 
+def _track_arguments(s: FormantSettings) -> tuple:
+    """Arguments for Praat's "Track": reference formants of a neutral vowel, scaled to the ceiling."""
+    scale = s.max_formant / 5500.0
+    references = tuple(round(f * scale, 1) for f in (550, 1650, 2750, 3850, 4950))
+    return (TRACKED_FORMANTS, *references, 1.0, 1.0, 1.0)
+
+
 def compute_formants(sound: Sound, s: FormantSettings) -> FormantResult:
-    n = int(np.ceil(s.n_formants))
+    n = TRACKED_FORMANTS if s.track else int(np.ceil(s.n_formants))
     if praat_engine.available():
         exports = "\n".join(f'selectObject: f\nTo Matrix: {i + 1}\n@export: "f{i}"' for i in range(n))
         intensity = 'selectObject: s\nTo Intensity: 100, 0, "no"\nDown to Matrix\n@export: "intensity"'
-        _, matrices = praat_engine.analyse(sound, f"f = {formant_command(s)}\n{exports}\n{intensity}")
+        tracked = "f = Track: " + ", ".join(map(str, _track_arguments(s))) + "\n" if s.track else ""
+        _, matrices = praat_engine.analyse(sound, f"f = {formant_command(s)}\n{tracked}{exports}\n{intensity}")
         times = matrices["f0"][0]
         freqs = np.vstack([matrices[f"f{i}"][1][0] for i in range(n)])
         db_times, db = matrices["intensity"][0], matrices["intensity"][1][0]
     else:
         formant = praat_formant(sound.praat, s)
+        if s.track:
+            formant = call(formant, "Track", *_track_arguments(s))
         times = np.asarray(formant.xs())
         freqs = np.vstack([call(formant, "To Matrix", i + 1).values[0] for i in range(n)])
         intensity = sound.praat.to_intensity(minimum_pitch=100.0, subtract_mean=False)

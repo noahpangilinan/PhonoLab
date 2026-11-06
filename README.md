@@ -265,6 +265,11 @@ nine ceilings around your current setting and shows them side by side, each with
 smoothly F1–F3 run. Lower is usually better, but check the tracks too. If the lowest stress is at the end of
 the range, the best ceiling may lie beyond it. Click a tile and choose *Use this ceiling*.
 
+### Time views
+
+*View ▸ Time views* opens a panel showing a cepstrogram, cochleagram or MFCC of the selection or the visible
+stretch (up to 60 s).
+
 ### Voice report
 
 The report is Praat's own *Voice report* text, unaltered. It covers pitch statistics, pulses and periods,
@@ -277,6 +282,8 @@ and amplitude factors).
 - **Spectral slice**: the Hanning-windowed spectrum of the selection, or of a window around the cursor
   (40 ms by default), as dB/Hz. It's limited to 30 s; use LTAS for longer stretches.
 - **LTAS**: the long-term average spectrum over any range, in bands (100 Hz by default).
+- **LPC spectrum**: the smooth vocal-tract shape at the middle of the selection or at the cursor, without the
+  harmonics. **Excitation** shows the same moment along the basilar membrane, in Bark.
 - Each spectrum lists its **spectral moments** (centre of gravity, standard deviation, skewness,
   kurtosis), with the power set in the spectrum settings. Moments are skipped for LTAS ranges over 30 s.
 - **Measure CPPS** logs the smoothed cepstral peak prominence using Praat's standard parameters (see below).
@@ -495,6 +502,7 @@ and has **Restore Defaults**, which returns it to the values below (Praat's, unl
 | Method | Burg, or robust (iterative LPC: 1.5 sd, 5 iterations) |
 | Formant ceiling | 5500 Hz (use about 5000 Hz for adult male voices) |
 | Number of formants | 5 |
+| Track F1–F3 | Off. Uses Praat's `Track` to keep F1–F3 continuous, with reference values scaled to the ceiling |
 | Window length | 0.025 s |
 | Pre-emphasis from | 50 Hz |
 | Dot dynamic range | 30 dB (hides dots in silence) |

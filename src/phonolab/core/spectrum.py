@@ -14,6 +14,18 @@ from phonolab.core.sound import Sound
 
 # Spectral moments need one FFT over the whole range; beyond this it gets slow and is rarely meaningful.
 MAX_MOMENTS_SECONDS = 30.0
+HALF_CONTEXT = 0.2  # s of sound around the time point for LPC and excitation
+LPC_SCRIPT = """To LPC (burg): 16, 0.025, 0.005, 50
+To Spectrum (slice): {time}, 20, 0, 50
+To Ltas (1-to-1)
+To Matrix
+@export: "curve"
+"""
+EXCITATION_SCRIPT = """To Cochleagram: 0.01, 0.1, 0.03, 0.03
+To Excitation (slice): {time}
+To Matrix
+@export: "curve"
+"""
 
 
 @dataclass(frozen=True)
@@ -69,6 +81,29 @@ def compute_ltas(sound: Sound, s: SpectrumSettings, start: float, end: float) ->
     ltas = call(part, "To Ltas", s.ltas_bandwidth)
     spectrum = part.to_spectrum() if end - start <= MAX_MOMENTS_SECONDS else None
     return _result("ltas", start, end, spectrum, ltas, s)
+
+
+def compute_lpc(sound: Sound, s: SpectrumSettings, start: float, end: float) -> SpectrumResult:
+    """The smooth LPC spectrum at the middle of ``[start, end]``: the vocal tract without the harmonics."""
+    return _engine_curve(sound, s, start, end, "lpc", LPC_SCRIPT)
+
+
+def compute_excitation(sound: Sound, s: SpectrumSettings, start: float, end: float) -> SpectrumResult:
+    """Excitation along the basilar membrane at the middle of ``[start, end]``, in Bark."""
+    return _engine_curve(sound, s, start, end, "excitation", EXCITATION_SCRIPT)
+
+
+def _engine_curve(sound: Sound, s: SpectrumSettings, start: float, end: float, kind: str, script: str):
+    if not praat_engine.available():
+        raise ValueError(f"The {kind} spectrum needs the bundled Praat 7 program")
+    middle = (start + end) / 2
+    a = max(0.0, middle - HALF_CONTEXT)
+    part = sound.extract(a, min(sound.duration, middle + HALF_CONTEXT))
+    _, matrices = praat_engine.analyse(part, script.format(time=middle - a))
+    x, rows = matrices["curve"]
+    keep = x <= s.max_frequency if kind == "lpc" else slice(None)
+    nan = float("nan")
+    return SpectrumResult(kind, start, end, x[keep], rows[0][keep], nan, nan, nan, nan)
 
 
 def _result(kind, start, end, spectrum, ltas, s: SpectrumSettings) -> SpectrumResult:

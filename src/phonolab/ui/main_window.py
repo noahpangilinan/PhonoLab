@@ -51,6 +51,7 @@ from phonolab.ui.script_window import ScriptWindow
 from phonolab.ui.spectrum_panel import SpectrumPanel
 from phonolab.ui.start_page import StartPage
 from phonolab.ui.theme import THEME_CHOICES, apply_theme
+from phonolab.ui.views_panel import ViewsPanel
 
 log = logging.getLogger(__name__)
 
@@ -152,6 +153,9 @@ class MainWindow(QMainWindow):
         self.spectrum_panel = SpectrumPanel(self.prefs.analysis_settings("spectrum", SpectrumSettings), self)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.spectrum_panel)
         self.spectrum_panel.hide()
+        self.views_panel = ViewsPanel(self)
+        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.views_panel)
+        self.views_panel.hide()
         self.spectrum_panel.settings_requested.connect(self._edit_spectrum_settings)
         self.log_panel = LogPanel(self)
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.log_panel)
@@ -291,6 +295,7 @@ class MainWindow(QMainWindow):
             theme_group.addAction(action)
         m.addSeparator()
         m.addAction(self.spectrum_panel.toggleViewAction())
+        m.addAction(self.views_panel.toggleViewAction())
         m.addAction(self.log_panel.toggleViewAction())
 
         m = mb.addMenu("&Play")
@@ -463,6 +468,7 @@ class MainWindow(QMainWindow):
         self.undo_group.setActiveStack(editor.doc.undo_stack if editor else None)
         self.info_panel.set_editor(editor)
         self.spectrum_panel.set_editor(editor)
+        self.views_panel.set_editor(editor)
         self._update_actions()
         self._busy.clear()
         self._update_busy()
@@ -471,7 +477,7 @@ class MainWindow(QMainWindow):
 
     def _show_docks(self, show: bool):
         """Hide the docks on the start page (they'd be empty) and bring back the same ones later."""
-        docks = (self.info_panel, self.spectrum_panel, self.log_panel)
+        docks = (self.info_panel, self.spectrum_panel, self.views_panel, self.log_panel)
         if not show and self._hidden_docks is None:
             # isHidden(), not isVisible(): before the window is first shown nothing is "visible".
             self._hidden_docks = [d for d in docks if not d.isHidden()]
@@ -523,6 +529,7 @@ class MainWindow(QMainWindow):
         for editor in self.editors():
             editor.retheme()
         self.spectrum_panel.retheme()
+        self.views_panel.retheme()
         self.start_page.update()
 
     def _on_system_colours_changed(self):

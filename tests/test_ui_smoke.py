@@ -511,3 +511,17 @@ def test_formant_ceiling_dialog_picks_and_applies(window, qtbot, wav, monkeypatc
         editor.compare_formant_ceilings()
         qtbot.waitUntil(lambda: bool(shown), timeout=30000)
         assert len(shown[0].candidates) == 9
+
+
+def test_views_panel_shows_a_view_and_limits_range(window, qtbot, wav):
+    from phonolab.core import praat_engine
+
+    window.open_sound(str(wav))
+    panel = window.views_panel
+    panel.show()
+    if praat_engine.available():
+        window.editor.axis.set_selection(0.2, 0.8)
+        panel.update_view()
+        qtbot.waitUntil(lambda: panel.result is not None, timeout=20000)
+        assert panel.image.image is not None and panel.status.text().startswith("Cepstrogram")
+    panel.retheme()

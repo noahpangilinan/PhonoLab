@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import logging
 
+import numpy as np
 import pyqtgraph as pg
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
@@ -46,6 +47,8 @@ class SpectrumPanel(QDockWidget):
         self.mode = QComboBox()
         self.mode.addItem("Spectral slice", "slice")
         self.mode.addItem("Long-term average (LTAS)", "ltas")
+        self.mode.addItem("LPC spectrum", "lpc")
+        self.mode.addItem("Excitation (Bark)", "excitation")
         self.mode.currentIndexChanged.connect(self.schedule_update)
         settings_button = QPushButton("Settings…")
         settings_button.clicked.connect(self.settings_requested)
@@ -132,7 +135,12 @@ class SpectrumPanel(QDockWidget):
         if kind == "slice" and end - start > MAX_SLICE_SECONDS:
             self.summary.setText(f"Selections over {MAX_SLICE_SECONDS:.0f} s: switch to LTAS.")
             return
-        fn = spectrum.compute_slice if kind == "slice" else spectrum.compute_ltas
+        fn = {
+            "slice": spectrum.compute_slice,
+            "ltas": spectrum.compute_ltas,
+            "lpc": spectrum.compute_lpc,
+            "excitation": spectrum.compute_excitation,
+        }[kind]
         try:
             r = fn(self.editor.doc.sound, self.settings, start, end)
         except Exception as e:  # Praat raises on degenerate ranges
@@ -141,12 +149,16 @@ class SpectrumPanel(QDockWidget):
             return
         self.result = r
         self.curve.setData(r.frequencies, r.db)
-        self.plot.setXRange(0, self.settings.max_frequency, padding=0)
-        self.summary.setText(
-            f"{'Slice' if kind == 'slice' else 'LTAS'} {start:.3f}–{end:.3f} s · "
-            f"centre of gravity {fmt(r.centre_of_gravity, 'Hz', 0)} · sd {fmt(r.standard_deviation, 'Hz', 0)} · "
-            f"skewness {fmt(r.skewness, '', 2)} · kurtosis {fmt(r.kurtosis, '', 2)}"
-        )
+        bark = kind == "excitation"
+        self.plot.setXRange(0, 25.6 if bark else self.settings.max_frequency, padding=0)
+        self.plot.setLabel("bottom", "Place (Bark)" if bark else "Frequency (Hz)")
+        summary = f"{self.mode.currentText()} {start:.3f}–{end:.3f} s"
+        if not np.isnan(r.centre_of_gravity):  # LPC and excitation have no moments
+            summary += (
+                f" · centre of gravity {fmt(r.centre_of_gravity, 'Hz', 0)} · sd {fmt(r.standard_deviation, 'Hz', 0)} · "
+                f"skewness {fmt(r.skewness, '', 2)} · kurtosis {fmt(r.kurtosis, '', 2)}"
+            )
+        self.summary.setText(summary)
 
     def log_measurements(self):
         if self.result is None:
