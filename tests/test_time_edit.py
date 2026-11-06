@@ -4,7 +4,9 @@ Most of the checks are invariants run over random edits, because the awkward cas
 thinks to write down: boundaries on the edit, cuts across several intervals, edits at the very ends.
 """
 
+import gc
 import os
+import weakref
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -325,6 +327,28 @@ def test_undo_history_holds_only_what_changed(qapp):
     doc.splice_audio("Cut", 10, 20)
     command = doc.undo_stack.command(0)
     assert len(command.removed) == 10 and len(command.inserted) == 0
+
+
+@pytest.mark.parametrize("inserted", [None, np.ones((5, 1))], ids=["cut", "paste"])
+def test_undo_history_never_pins_the_old_audio(qapp, inserted):
+    """A view of the old samples, even an empty one, would keep all of them in memory."""
+    doc = Document(ramp(n=100_000))
+    old = weakref.ref(doc.sound.samples)
+    doc.splice_audio("Edit", 10, 20, inserted)
+    gc.collect()
+    assert old() is None
+    command = doc.undo_stack.command(0)
+    assert command.removed.base is None and command.inserted.base is None
+
+
+def test_memory_stays_flat_over_many_edits(qapp):
+    doc = Document(ramp(n=100_000))
+    refs = []
+    for i in range(30):
+        refs.append(weakref.ref(doc.sound.samples))
+        doc.splice_audio("Cut", i, i + 5)
+    gc.collect()
+    assert sum(r() is not None for r in refs) == 0
 
 
 def test_undoing_back_to_the_saved_audio_is_clean(qapp, tmp_path):

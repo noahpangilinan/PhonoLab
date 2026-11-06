@@ -12,6 +12,8 @@ import atexit
 import contextlib
 import logging
 import multiprocessing as mp
+import os
+import threading
 from collections import OrderedDict
 from concurrent.futures import Future, ProcessPoolExecutor
 from dataclasses import replace
@@ -80,9 +82,21 @@ def _run_on_sound(sound: Sound, fn, args: tuple):
 _executors: dict[str, ProcessPoolExecutor] = {}
 
 
+def _exit_with_parent() -> None:
+    """Runs in each worker. Without it, workers outlive a crashed app and stay in memory until reboot."""
+
+    def wait():
+        mp.parent_process().join()
+        os._exit(0)
+
+    threading.Thread(target=wait, daemon=True).start()
+
+
 def _executor(kind: str) -> ProcessPoolExecutor:
     if kind not in _executors:
-        _executors[kind] = ProcessPoolExecutor(max_workers=1, mp_context=mp.get_context("spawn"))
+        _executors[kind] = ProcessPoolExecutor(
+            max_workers=1, mp_context=mp.get_context("spawn"), initializer=_exit_with_parent
+        )
     return _executors[kind]
 
 
@@ -314,7 +328,8 @@ class AnalysisManager(QObject):
                 return
             try:
                 if (exc := f.exception()) is not None:
-                    log.warning("analysis %s failed: %r", name, exc)
+                    if token == self._tokens.get(name):  # an edit drops running jobs, and that's no failure
+                        log.warning("analysis %s failed: %r", name, exc)
                     signals.failed.emit(name, token, str(exc))
                 else:
                     signals.done.emit(name, token, f.result())

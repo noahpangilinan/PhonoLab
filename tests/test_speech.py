@@ -193,6 +193,17 @@ def test_alignment_text_can_never_become_script(spoken, tmp_path, monkeypatch):
 
 
 @needs_praat
+@pytest.mark.parametrize("text", ['she said "hello" twice', "it's 'folder$' and 'text$' here"])
+def test_awkward_alignment_text_arrives_unchanged(text):
+    """Quotes would break a script line, and Praat would expand 'folder$' there."""
+    sound, _ = speech.synthesize(text)
+    result = speech.align(sound, 0.0, sound.duration, text)
+    found = " ".join(w[2] for w in result.words if w[2].strip())
+    assert "hello" in found or "folder" in found
+    assert "phonolab-" not in found and "Temp" not in found
+
+
+@needs_praat
 def test_silence_gives_a_clear_failure_or_nothing_harmful():
     sound = Sound(np.zeros(16000), 16000.0)
     try:

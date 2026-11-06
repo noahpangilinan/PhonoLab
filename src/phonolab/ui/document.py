@@ -188,7 +188,8 @@ class _AudioCommand(QUndoCommand):
         super().__init__(text)
         self.doc, self.start, self.end = doc, start, end
         self.removed = np.array(doc.sound.samples[start:end])
-        self.inserted = doc.sound.samples[:0] if inserted is None else np.array(inserted)
+        # Not samples[:0]: even an empty view keeps the whole of the old audio in memory.
+        self.inserted = np.zeros((0, doc.sound.n_channels)) if inserted is None else np.array(inserted)
         self.grid_before = doc.textgrid.copy() if doc.textgrid is not None else None
         self.grid_after = grid
         self.corrections_before, self.corrections_after = doc.corrections, corrections

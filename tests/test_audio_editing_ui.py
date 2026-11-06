@@ -4,7 +4,9 @@ The core tests prove the arithmetic. These prove that every pane, cache and back
 new audio, including when an edit lands while analyses are still running.
 """
 
+import gc
 import os
+import weakref
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -138,6 +140,19 @@ def test_the_spectrum_and_views_panels_survive_a_cursor_past_the_new_end(window,
     assert editor.axis.cursor <= editor.axis.duration
 
 
+def test_the_running_app_lets_go_of_old_audio(window, qtbot, wav):  # noqa: F811
+    """Every pane, cache and job must drop it, not just the document."""
+    editor = opened(window, wav, qtbot)
+    refs = []
+    for i in range(4):
+        refs.append(weakref.ref(editor.doc.sound.samples))
+        editor.axis.set_selection(0.1 + i * 0.05, 0.12 + i * 0.05)
+        window.cut_sound()
+        settled(qtbot, editor)
+    gc.collect()
+    assert sum(r() is not None for r in refs) == 0
+
+
 def test_each_edit_closes_the_previous_shared_block(window, qtbot, wav):  # noqa: F811
     editor = opened(window, wav, qtbot)
     old = editor.manager._shared
@@ -189,6 +204,27 @@ def test_an_edit_during_analysis_never_shows_old_results(window, qtbot, wav):  #
     settled(qtbot, editor)
     qtbot.wait(500)  # anything stale would have landed by now
     assert_matches_sound(editor)
+
+
+def test_a_manipulation_analysis_of_the_old_audio_never_lands(window, qtbot, wav):  # noqa: F811
+    """Its pitch points would belong to audio that no longer exists."""
+    editor = opened(window, wav, qtbot)
+    editor.ensure_manipulation()  # the pane is hidden, so nothing restarts this after the edit
+    editor.axis.set_selection(0.0, 0.5)
+    window.cut_sound()
+    qtbot.wait(2500)
+    assert editor.doc.manipulation is None
+
+
+def test_any_background_job_of_the_old_audio_is_dropped(window, qtbot, wav):  # noqa: F811
+    editor = opened(window, wav, qtbot)
+    delivered = []
+    editor.manager.job_done.connect(lambda key, result: delivered.append(key))
+    editor.manager.submit("view", int)
+    editor.axis.set_selection(0.0, 0.5)
+    window.cut_sound()
+    qtbot.wait(1500)
+    assert "view" not in delivered
 
 
 def test_rapid_edits_and_undos_settle_on_the_right_audio(window, qtbot, wav):  # noqa: F811
