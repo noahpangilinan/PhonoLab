@@ -102,6 +102,7 @@ SHORTCUTS = [
             ("Ctrl+M", "Manipulation"),
             ("Shift+Space", "Play resynthesis"),
             ("Ctrl+Shift+V", "Voice report"),
+            ("Ctrl+X / Ctrl+C / Ctrl+V", "Cut, copy and paste sound"),
         ],
     ),
 ]
@@ -137,6 +138,7 @@ class MainWindow(QMainWindow):
         self.qsettings = QSettings()
         self.prefs = Preferences(self.qsettings)
         self.player = AudioPlayer(self)
+        self.sound_clip = None  # the last audio cut or copied, shared by every tab
         self.undo_group = QUndoGroup(self)
 
         self.start_page = StartPage()
@@ -274,6 +276,19 @@ class MainWindow(QMainWindow):
         redo = self.undo_group.createRedoAction(self, "&Redo")
         redo.setShortcuts([QKeySequence("Ctrl+Shift+Z"), QKeySequence("Ctrl+Y")])
         m.addActions([undo, redo])
+        m.addSeparator()
+        self._action(m, "Cu&t sound", self.cut_sound, "Ctrl+X", needs=e, tip="Remove the selection from the sound")
+        self._action(m, "&Copy sound", self.copy_sound, "Ctrl+C", needs=e)
+        self._action(
+            m,
+            "&Paste sound",
+            lambda: self.paste_sound("here"),
+            "Ctrl+V",
+            needs=e,
+            tip="Replace the selection, or insert at the cursor",
+        )
+        self._action(m, "Paste &before selection", lambda: self.paste_sound("before"), needs=e)
+        self._action(m, "Paste a&fter selection", lambda: self.paste_sound("after"), needs=e)
         m.addSeparator()
         self._action(m, "Select &all", lambda: self.editor.axis.select_all(), "Ctrl+Shift+A", needs=e)
         self._action(
@@ -591,6 +606,15 @@ class MainWindow(QMainWindow):
         if self.prefs.theme() == "system":
             self._apply_theme()
 
+    def copy_sound(self):
+        self.sound_clip = self.editor.copy_selection() or self.sound_clip
+
+    def cut_sound(self):
+        self.sound_clip = self.editor.cut_selection() or self.sound_clip
+
+    def paste_sound(self, where: str):
+        self.editor.paste(self.sound_clip, where)
+
     def show_message(self, text: str):
         self.statusBar().showMessage(text, 5000)
 
@@ -851,14 +875,19 @@ class MainWindow(QMainWindow):
     def _confirm_discard(self, editor: SoundEditor) -> bool:
         """Ask to save an unsaved sound and/or annotations. Returns False if the user cancels."""
         buttons = QMessageBox.StandardButton
-        if editor.doc.sound_unsaved:
+        doc = editor.doc
+        audio_discarded = False
+        if doc.sound_needs_saving:
+            kind = "new" if doc.sound_unsaved else "edited"
             answer = QMessageBox.question(
-                self, "Unsaved sound", f"Save the new sound “{editor.doc.sound.name}”?",
+                self, "Unsaved sound", f"Save the {kind} sound “{doc.sound.name}”?",
                 buttons.Save | buttons.Discard | buttons.Cancel,
             )  # fmt: skip
             if answer == buttons.Cancel or (answer == buttons.Save and not self.save_sound_as(editor)):
                 return False
-        if editor.doc.corrections_dirty:
+            audio_discarded = answer == buttons.Discard and doc.audio_dirty
+        # Corrections and annotations follow audio edits, so without those edits their times would be wrong.
+        if editor.doc.corrections_dirty and not audio_discarded:
             answer = QMessageBox.question(
                 self, "Unsaved corrections", f"Save your corrections to “{editor.doc.sound.name}”?",
                 buttons.Save | buttons.Discard | buttons.Cancel,
@@ -867,10 +896,11 @@ class MainWindow(QMainWindow):
                 return False
         if not editor.doc.textgrid_dirty:
             return True
+        warning = "Its times follow the audio edits you just discarded. " if audio_discarded else ""
         answer = QMessageBox.question(
             self,
             "Unsaved annotations",
-            f"Save changes to the TextGrid of “{editor.doc.sound.name}”?",
+            f"{warning}Save changes to the TextGrid of “{editor.doc.sound.name}”?",
             QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
         )
         if answer == QMessageBox.StandardButton.Save:
@@ -1043,8 +1073,8 @@ class MainWindow(QMainWindow):
 
     def save_corrections(self, editor: SoundEditor | None = None) -> bool:
         editor = editor or self.editor
-        if editor.doc.sound.path is None and not self.save_sound_as(editor):
-            return False  # corrections live next to the sound, so it needs a file first
+        if editor.doc.sound_needs_saving and not self.save_sound_as(editor):
+            return False  # corrections live next to the sound and follow its timing, so save it first
         try:
             path = editor.doc.save_corrections()
         except OSError as err:

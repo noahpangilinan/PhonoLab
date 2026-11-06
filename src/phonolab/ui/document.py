@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+from itertools import count
 from pathlib import Path
 
+import numpy as np
 from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtGui import QUndoCommand, QUndoStack
 
 from phonolab.core.corrections import Corrections
-from phonolab.core.sound import Sound
+from phonolab.core.sound import LongSoundError, Sound
 from phonolab.core.textgrid import TextGrid, TextGridError
+from phonolab.core.time_edit import Splice
+
+_revisions = count(1)
 
 
 class Document(QObject):
@@ -17,6 +22,7 @@ class Document(QObject):
     textgrid_changed = pyqtSignal()
     title_changed = pyqtSignal(str)
     corrections_changed = pyqtSignal()
+    sound_changed = pyqtSignal()  # the audio itself was edited, undone or redone
 
     def __init__(self, sound: Sound, parent=None):
         super().__init__(parent)
@@ -27,6 +33,7 @@ class Document(QObject):
         self.manipulation = None  # ManipulationState once the user opens manipulation
         self.corrections = Corrections.load_for(sound.path)
         self._saved_corrections = self.corrections
+        self._audio_revision = self._saved_audio_revision = 0
         # One undo history per document, shared by annotation and pitch/duration edits.
         self.undo_stack = QUndoStack(self)
         self.textgrid_changed.connect(lambda: self.title_changed.emit(self.title))
@@ -37,7 +44,7 @@ class Document(QObject):
 
     @property
     def is_dirty(self) -> bool:
-        return self.textgrid_dirty or self.sound_unsaved or self.corrections_dirty
+        return self.textgrid_dirty or self.sound_needs_saving or self.corrections_dirty
 
     @property
     def corrections_dirty(self) -> bool:
@@ -73,9 +80,49 @@ class Document(QObject):
         """True for sounds made inside PhonoLab (recorded, generated, filtered…) and not saved yet."""
         return self.sound.path is None
 
+    @property
+    def audio_dirty(self) -> bool:
+        """True if the audio was edited since it was opened or saved."""
+        return self._audio_revision != self._saved_audio_revision
+
+    @property
+    def sound_needs_saving(self) -> bool:
+        return self.sound_unsaved or self.audio_dirty
+
     def save_sound(self, path: Path) -> None:
+        moved = self.sound.path != path
         self.sound.save_as(path)
+        self._saved_audio_revision = self._audio_revision
+        if moved:  # corrections live next to the sound, so compare with what's beside the new file
+            self._saved_corrections = Corrections.load_for(path)
         self.title_changed.emit(self.title)
+
+    def splice_audio(self, description: str, start: int, end: int, inserted: np.ndarray | None = None) -> None:
+        """Replace samples ``[start, end)`` with ``inserted`` as one undoable step, annotations included.
+
+        Raises TextGridError or LongSoundError (and changes nothing) if the edit can't be made.
+        """
+        sound = self.sound
+        if sound.is_long:
+            raise LongSoundError("Long recordings can't be edited: extract a part first")
+        added = 0 if inserted is None else len(inserted)
+        if end == start and added == 0:
+            return
+        if added == 0 and end - start >= sound.n_samples:
+            raise TextGridError("Can't cut the whole sound")
+        rate = sound.sampling_rate
+        splice = Splice(start / rate, (end - start) / rate, added / rate)
+        grid = None if self.textgrid is None else splice.applied_to(self.textgrid)
+        self.undo_stack.push(
+            _AudioCommand(self, description, start, end, inserted, grid, self.corrections.spliced(splice))
+        )
+
+    def _set_audio(self, sound: Sound, grid: TextGrid | None, corrections: Corrections, manipulation, revision: int):
+        self.sound, self.textgrid, self.corrections, self.manipulation = sound, grid, corrections, manipulation
+        self._audio_revision = revision
+        self.sound_changed.emit()
+        self.corrections_changed.emit()
+        self.textgrid_changed.emit()
 
     def set_textgrid(self, textgrid: TextGrid | None, path: Path | None = None, saved: bool = True) -> None:
         """Replace the TextGrid. ``saved=False`` marks a new grid as unsaved work."""
@@ -118,6 +165,36 @@ class Document(QObject):
         old = t.get_text(index)
         if old != text:
             self.undo_stack.push(_SetLabelCommand(self, tier, index, old, text))
+
+
+class _AudioCommand(QUndoCommand):
+    """Keeps only the samples that changed, so undo history stays small on long edits."""
+
+    def __init__(self, doc: Document, text: str, start: int, end: int, inserted, grid, corrections: Corrections):
+        super().__init__(text)
+        self.doc, self.start, self.end = doc, start, end
+        self.removed = np.array(doc.sound.samples[start:end])
+        self.inserted = doc.sound.samples[:0] if inserted is None else np.array(inserted)
+        self.grid_before = doc.textgrid.copy() if doc.textgrid is not None else None
+        self.grid_after = grid
+        self.corrections_before, self.corrections_after = doc.corrections, corrections
+        self.manipulation_before = doc.manipulation
+        self.manipulation_after = None  # the pitch points came from the old audio
+        self.revision_before, self.revision_after = doc._audio_revision, next(_revisions)
+
+    def redo(self):
+        doc = self.doc
+        self.manipulation_before = doc.manipulation
+        grid = None if self.grid_after is None else self.grid_after.copy()
+        sound = doc.sound.spliced(self.start, self.end, self.inserted)
+        doc._set_audio(sound, grid, self.corrections_after, self.manipulation_after, self.revision_after)
+
+    def undo(self):
+        doc = self.doc
+        self.manipulation_after = doc.manipulation  # later manipulation commands refer to this one
+        grid = None if self.grid_before is None else self.grid_before.copy()
+        sound = doc.sound.spliced(self.start, self.start + len(self.inserted), self.removed)
+        doc._set_audio(sound, grid, self.corrections_before, self.manipulation_before, self.revision_before)
 
 
 class _CorrectionsCommand(QUndoCommand):

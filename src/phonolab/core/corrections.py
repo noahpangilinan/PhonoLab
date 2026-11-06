@@ -13,6 +13,7 @@ from pathlib import Path
 import numpy as np
 
 from phonolab.core.analysis import PitchResult
+from phonolab.core.time_edit import Splice
 from phonolab.core.voice_types import VoicingResult
 
 SUFFIX = ".corrections.json"
@@ -66,6 +67,23 @@ class Corrections:
             tuple((a + offset, b + offset) for a, b in self.removed_pulses),
             tuple(t + offset for t in self.added_pulses),
         )
+
+    def spliced(self, edit: Splice) -> Corrections:
+        """These corrections after an audio edit. They were made on the old audio, so none cover new sound."""
+
+        def ranges(items: tuple[tuple, ...]) -> tuple[tuple, ...]:
+            out = []
+            for start, end, *rest in items:
+                before = (start, min(end, edit.start)) if start < edit.start else None
+                after = (max(start, edit.end) + edit.change, end + edit.change) if end > edit.end else None
+                if before and after and edit.inserted == 0:
+                    out.append((before[0], after[1], *rest))
+                    continue
+                out += [(*part, *rest) for part in (before, after) if part and part[1] > part[0]]
+            return tuple(out)
+
+        added = [t if t < edit.start else t + edit.change for t in self.added_pulses if not edit.start <= t < edit.end]
+        return Corrections(ranges(self.unvoiced), ranges(self.octaves), ranges(self.removed_pulses), tuple(added))
 
     # ------------------------------------------------------------------ applying to results
 

@@ -106,7 +106,7 @@ _cache: dict[tuple, object] = {}
 
 
 def _manipulation(sound: Sound, s: ManipulationSettings):
-    key = (id(sound), s)
+    key = (sound.id, s)  # not id(): Python reuses those once a Sound is gone
     if key not in _cache:
         _cache.clear()
         _cache[key] = call(sound.praat, "To Manipulation", s.time_step, s.floor, s.ceiling)

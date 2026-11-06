@@ -63,35 +63,48 @@ class Envelope:
 
 class WaveformPane(TimePane):
     def __init__(self, axis, sound: Sound, parent=None):
+        self._read(sound)
+        self.curves = []
+        super().__init__(axis, parent)
+        self.setMinimumHeight(70)
+        pen = pg.mkPen(COLORS["waveform"], width=1)
+        for _ in range(sound.n_channels):
+            curve = pg.PlotDataItem(pen=pen, connect="all", skipFiniteCheck=True)
+            self.addItem(curve)
+            self.curves.append(curve)
+        # Glottal pulses: one vertical mark per pulse across all channels, as in Praat.
+        self.pulse_marks = pg.PlotDataItem(pen=pg.mkPen(COLORS["pulses"], width=1), connect="pairs")
+        self.pulse_marks.setZValue(5)
+        self.addItem(self.pulse_marks)
+        self.pulse_times = np.zeros(0)
+        self._stack_channels()
+        self.view_updated(*axis.view)
+
+    def _read(self, sound: Sound):
         self.sound = sound
         coarse = sound.block_envelope
         self.envelopes = [
             Envelope(sound.samples[:, c], sound.sampling_rate, (coarse[0][:, c], coarse[1][:, c]) if coarse else None)
             for c in range(sound.n_channels)
         ]
-        self.curves = []
-        super().__init__(axis, parent)
-        self.setMinimumHeight(70)
-        n = sound.n_channels
-        self.peak = sound.peak or 1.0
-        spacing = 2 * self.peak  # channels stacked top to bottom
-        pen = pg.mkPen(COLORS["waveform"], width=1)
-        for c in range(n):
-            curve = pg.PlotDataItem(pen=pen, connect="all", skipFiniteCheck=True)
+
+    def _stack_channels(self):
+        """Channels run top to bottom, spaced by the peak."""
+        n = len(self.curves)
+        self.peak = self.sound.peak or 1.0
+        spacing = 2 * self.peak
+        for c, curve in enumerate(self.curves):
             curve.setPos(0, -spacing * c)
-            self.addItem(curve)
-            self.curves.append(curve)
         self.vb.setYRange(-spacing * (n - 1) - self.peak, self.peak, padding=0.05)
         if n > 1:
             labels = [(-spacing * c, f"ch {c + 1}") for c in range(n)]
             self.getPlotItem().getAxis("left").setTicks([labels, []])
-        # Glottal pulses: one vertical mark per pulse across all channels, as in Praat.
-        self.pulse_marks = pg.PlotDataItem(pen=pg.mkPen(COLORS["pulses"], width=1), connect="pairs")
-        self.pulse_marks.setZValue(5)
-        self.addItem(self.pulse_marks)
         self._pulse_span = (-spacing * (n - 1) - self.peak, self.peak)
+
+    def set_sound(self, sound: Sound):
+        self._read(sound)
+        self._stack_channels()
         self.pulse_times = np.zeros(0)
-        self.view_updated(*axis.view)
 
     def retheme(self):
         super().retheme()

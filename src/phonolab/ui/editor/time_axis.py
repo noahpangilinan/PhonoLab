@@ -20,6 +20,20 @@ class TimeAxisController(QObject):
         self.cursor = 0.0
         self.selection: tuple[float, float] | None = None
 
+    def set_duration(self, duration: float, view: tuple[float, float] | None = None) -> None:
+        """The sound changed length. Tells everyone, because what's on screen changed even if the view didn't."""
+        was_whole = self.view == (0.0, self.duration)
+        self.duration = duration
+        width = duration if was_whole else min(self.view[1] - self.view[0], duration)
+        start = min(max(self.view[0], 0.0), duration - width)
+        self.view = view or (start, start + width)
+        self.cursor = min(self.cursor, duration)
+        if self.selection and self.selection[1] > duration:
+            self.selection = None
+        self.view_changed.emit(*self.view)
+        self.cursor_changed.emit(self.cursor)
+        self.selection_changed.emit(self.selection)
+
     # ------------------------------------------------------------------ view
 
     def set_view(self, start: float, end: float) -> None:

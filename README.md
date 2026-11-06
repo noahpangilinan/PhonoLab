@@ -23,23 +23,24 @@ TextGrids are read and written in Praat's own formats, so you can move between P
 5. [Annotation (TextGrids)](#annotation-textgrids)
 6. [Measurements and queries](#measurements-and-queries)
 7. [Correcting analyses](#correcting-analyses)
-8. [Editing tier files](#editing-tier-files)
-9. [Long recordings](#long-recordings)
-10. [Manipulation (PSOLA)](#manipulation-psola)
-11. [Sound operations, recording and synthesis](#sound-operations-recording-and-synthesis)
-12. [Batch measurement](#batch-measurement)
-13. [Scripting (Praat and Python)](#scripting-praat-and-python)
-14. [Publication figures](#publication-figures)
-15. [Analysis settings and defaults](#analysis-settings-and-defaults)
-16. [Keyboard shortcuts](#keyboard-shortcuts)
-17. [Menu reference](#menu-reference)
-18. [How results relate to Praat](#how-results-relate-to-praat)
-19. [Files, formats and preferences](#files-formats-and-preferences)
-20. [Architecture](#architecture)
-21. [Development](#development)
-22. [Troubleshooting](#troubleshooting)
-23. [Not yet covered](#not-yet-covered)
-24. [License](#license)
+8. [Editing the audio](#editing-the-audio)
+9. [Editing tier files](#editing-tier-files)
+10. [Long recordings](#long-recordings)
+11. [Manipulation (PSOLA)](#manipulation-psola)
+12. [Sound operations, recording and synthesis](#sound-operations-recording-and-synthesis)
+13. [Batch measurement](#batch-measurement)
+14. [Scripting (Praat and Python)](#scripting-praat-and-python)
+15. [Publication figures](#publication-figures)
+16. [Analysis settings and defaults](#analysis-settings-and-defaults)
+17. [Keyboard shortcuts](#keyboard-shortcuts)
+18. [Menu reference](#menu-reference)
+19. [How results relate to Praat](#how-results-relate-to-praat)
+20. [Files, formats and preferences](#files-formats-and-preferences)
+21. [Architecture](#architecture)
+22. [Development](#development)
+23. [Troubleshooting](#troubleshooting)
+24. [Not yet covered](#not-yet-covered)
+25. [License](#license)
 
 ---
 
@@ -311,6 +312,28 @@ sound; it loads when the sound opens, and batch measurement uses it too, marking
 
 The voice report's period range is fixed, so choosing your own (*Analysis ▸ Voice settings*) adds extra jitter
 and shimmer lines for it.
+
+## Editing the audio
+
+*Edit ▸ Cut sound* (Ctrl+X), *Copy sound* (Ctrl+C) and *Paste sound* (Ctrl+V) change the sound in place, and
+every edit can be undone. Ctrl+V replaces the selection, or inserts at the cursor if nothing is selected.
+*Paste before selection* and *Paste after selection* insert without replacing. Copied audio can go into any
+open sound with the same sampling frequency and number of channels. If they differ, PhonoLab says so rather
+than converting, so use *Resample* or *Convert to mono* first. Long recordings can't be edited, but you can
+copy from one.
+
+Everything on the timeline follows the edit, and stays on the samples it marked:
+
+| Edit | TextGrid | Corrections |
+|---|---|---|
+| Cut | Labels are trimmed. Anything wholly inside the cut goes. | Trimmed, and later ones move |
+| Insert | The interval around it stretches. At a boundary, the new sound gets an empty interval. | Split around the new sound |
+| Replace a selection | Labels inside are rescaled to the new length | Those inside go |
+
+An audio edit resets the manipulation, because its pitch points came from the old audio. Undo brings it back.
+
+Edits stay in memory until you use *Save sound as…*. If you close without saving them, PhonoLab won't offer to
+save corrections, and it warns you before saving the TextGrid, because their times follow the discarded edits.
 
 ## Editing tier files
 

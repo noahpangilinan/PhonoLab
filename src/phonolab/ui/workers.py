@@ -195,6 +195,25 @@ class AnalysisManager(QObject):
         window = self.analysis_window
         return window is not None and window[0] <= start and end <= window[1]
 
+    def set_sound(self, sound: Sound) -> None:
+        """Start over on edited audio. Whatever is still running answers for the old sound, so drop it."""
+        for key in self._tokens:
+            self._tokens[key] += 1
+            self.busy_changed.emit(key, False)
+        for future in self._futures.values():
+            future.cancel()
+        self._futures.clear()
+        self.results.clear()
+        self.raw_results.clear()
+        self.sound = sound
+        start, end = self._spectrogram_range
+        self._spectrogram_range = (min(start, sound.duration), min(end, sound.duration))
+        if self._shared is not None:
+            self._shared.close()
+        self._shared = SharedSound(sound)
+        for name in self.enabled:
+            self.request(name)
+
     def set_corrections(self, corrections: Corrections) -> None:
         """Apply new corrections to existing results; no need to re-analyse."""
         self.corrections = corrections

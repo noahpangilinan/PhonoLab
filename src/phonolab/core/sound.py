@@ -301,6 +301,18 @@ class Sound:
             raise LongSoundError(f"Select {MAX_PART_SECONDS / 60:.0f} minutes or less of this long recording")
         return Sound(np.array(self.samples[a:b], dtype=np.float64), self.sampling_rate)
 
+    def spliced(self, start: int, end: int, inserted: np.ndarray | None = None) -> Sound:
+        """A new Sound with samples ``[start, end)`` replaced by ``inserted``, shaped (samples, channels).
+
+        Sounds are never changed in place: everything cached per Sound stays true of that Sound.
+        """
+        if self.is_long:
+            raise LongSoundError("Long recordings can't be edited: extract a part first")
+        new = self.samples[:0] if inserted is None else inserted
+        return Sound(
+            np.concatenate([self.samples[:start], new, self.samples[end:]]), self.sampling_rate, self.path, self.title
+        )
+
     def part(self, start: float, end: float) -> tuple[Sound, float, float]:
         """This Sound for ordinary sounds; a loaded stretch of a long one. Returns (sound, start, end) in its time."""
         if not self.is_long:

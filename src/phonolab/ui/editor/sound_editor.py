@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import csv
 import functools
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import numpy as np
@@ -92,6 +92,30 @@ class _OverviewBox(pg.ViewBox):
         ev.accept()
 
 
+@dataclass(frozen=True)
+class SoundClip:
+    """Audio on PhonoLab's clipboard, shared by every open sound."""
+
+    samples: np.ndarray  # (samples, channels)
+    sampling_rate: float
+
+    def problem_with(self, sound: Sound) -> str | None:
+        """Why this can't go into ``sound``. Converting silently would change the data, so say so instead."""
+        if sound.is_long:
+            return EXTRACT_FIRST
+        if self.sampling_rate != sound.sampling_rate:
+            return (
+                f"The copied sound is {self.sampling_rate:g} Hz and this one is {sound.sampling_rate:g} Hz: "
+                "use Sound > Resample first"
+            )
+        if self.samples.shape[1] != sound.n_channels:
+            return (
+                f"The copied sound has {self.samples.shape[1]} channel(s) and this one has {sound.n_channels}: "
+                "use Sound > Convert to mono first"
+            )
+        return None
+
+
 class OverviewStrip(pg.PlotWidget):
     """Whole-file waveform with a box marking the visible window; click or drag to navigate."""
 
@@ -114,16 +138,22 @@ class OverviewStrip(pg.PlotWidget):
             envelope = Envelope(sound.samples[:, 0], sound.sampling_rate, (lows.min(axis=1), highs.max(axis=1)))
         else:
             envelope = Envelope(sound.mono, sound.sampling_rate)
-        x, y = envelope.render(0, sound.duration, 1500)
-        self.curve = plot.plot(x, y, pen=pg.mkPen(COLORS["muted"]))
-        peak = sound.peak or 1.0
-        plot.getViewBox().setRange(xRange=(0, sound.duration), yRange=(-peak, peak), padding=0)
+        self.curve = plot.plot(pen=pg.mkPen(COLORS["muted"]))
+        self._draw(envelope, sound)
         self.window_box = pg.LinearRegionItem(
             movable=False, brush=self._window_brush(), pen=pg.mkPen(COLORS["playhead"])
         )
         self.addItem(self.window_box)
         axis.view_changed.connect(lambda a, b: self.window_box.setRegion((a, b)))
         self.window_box.setRegion(axis.view)
+
+    def _draw(self, envelope: Envelope, sound):
+        self.curve.setData(*envelope.render(0, sound.duration, 1500))
+        peak = sound.peak or 1.0
+        self.getPlotItem().getViewBox().setRange(xRange=(0, sound.duration), yRange=(-peak, peak), padding=0)
+
+    def set_sound(self, sound):
+        self._draw(Envelope(sound.mono, sound.sampling_rate), sound)
 
     @staticmethod
     def _window_brush():
@@ -211,6 +241,7 @@ class SoundEditor(QWidget):
         self.find_bar.hide()
         self.find_bar.closed.connect(lambda: self.textgrid_view.setFocus())
         doc.textgrid_changed.connect(self._on_textgrid_changed)
+        doc.sound_changed.connect(self._on_sound_changed)
 
         self.scrollbar = QScrollBar(Qt.Orientation.Horizontal)
         self.scrollbar.valueChanged.connect(self._scrolled)
@@ -239,6 +270,86 @@ class SoundEditor(QWidget):
         self._sync_scrollbar(*self.axis.view)
         if not self.manager.analyses_available:
             self._on_window_changed(False)
+
+    # ------------------------------------------------------------------ editing the audio
+
+    def _on_sound_changed(self):
+        """Every pane moves to the new audio. Runs for edits, undo and redo."""
+        sound = self.doc.sound
+        self.stop()
+        self._resynthesis = self._after_resynthesis = None
+        self.manager.set_sound(sound)
+        self.waveform.set_sound(sound)
+        self.overview.set_sound(sound)
+        self.axis.set_duration(sound.duration)
+        self.manipulation_pane.set_state(self.doc.manipulation)
+        if self.manipulation_pane.isVisible():
+            self.ensure_manipulation()
+
+    def _selected_samples(self) -> tuple[int, int] | None:
+        if self.axis.selection is None:
+            self.message.emit("Select a part of the sound first")
+            return None
+        a, b = sorted(self.doc.sound.time_to_index(t) for t in self.axis.selection)
+        if a == b:
+            self.message.emit("The selection is too short to hold a sample")
+            return None
+        return a, b
+
+    def _splice(self, description: str, start: int, end: int, inserted=None) -> bool:
+        state = self.doc.manipulation
+        modified = state is not None and state.is_modified
+        try:
+            self.doc.splice_audio(description, start, end, inserted)
+        except (TextGridError, LongSoundError) as e:
+            self.message.emit(str(e))
+            return False
+        if modified:
+            self.message.emit("The manipulation was reset for the edited sound. Undo brings it back.")
+        return True
+
+    @_reports_long_sound_limits
+    def copy_selection(self) -> SoundClip | None:
+        """The selected audio, ready to paste into this or any other open sound."""
+        if self.axis.selection is None:
+            self.message.emit("Select a part of the sound first")
+            return None
+        part = self.doc.sound.extract(*self.axis.selection)
+        return SoundClip(part.samples, part.sampling_rate) if part.n_samples else None
+
+    def cut_selection(self) -> SoundClip | None:
+        span = self._selected_samples()
+        if span is None:
+            return None
+        clip = self.copy_selection()
+        if clip is None or not self._splice("Cut", *span):
+            return None
+        self.axis.clear_selection()
+        self.axis.set_cursor(span[0] / self.doc.sound.sampling_rate)
+        return clip
+
+    def paste(self, clip: SoundClip | None, where: str = "here"):
+        """Paste ``before`` or ``after`` the selection, or ``here``: over a selection, otherwise at the cursor."""
+        sound = self.doc.sound
+        if clip is None:
+            self.message.emit("Nothing to paste: cut or copy part of a sound first")
+            return
+        if problem := clip.problem_with(sound):
+            self.message.emit(problem)
+            return
+        selection = self.axis.selection
+        if where != "here" and selection is None:
+            self.message.emit("Select a part of the sound first")
+            return
+        if selection is None:
+            start = end = sound.time_to_index(self.axis.cursor)
+        else:
+            a, b = sorted(sound.time_to_index(t) for t in selection)
+            start, end = {"here": (a, b), "before": (a, a), "after": (b, b)}[where]
+        names = {"here": "Paste", "before": "Paste before selection", "after": "Paste after selection"}
+        if self._splice(names[where], start, end, clip.samples):
+            rate = sound.sampling_rate
+            self.axis.set_selection(start / rate, (start + len(clip.samples)) / rate)
 
     # ------------------------------------------------------------------ layout helpers
 
