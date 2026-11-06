@@ -721,3 +721,11 @@ def test_changing_loudness_invalidates_the_resynthesis(window, qtbot, wav):
     qtbot.waitUntil(lambda: len(results) == 2, timeout=20000)
     assert results[1] is not results[0]
     assert np.abs(results[1]).sum() < np.abs(results[0]).sum()
+
+
+def test_theme_switch_reaches_open_tier_windows(window, tmp_path, monkeypatch):
+    tier_window = open_tier_window(window, tmp_path)
+    calls = []
+    monkeypatch.setattr(tier_window, "retheme", lambda: calls.append(True))
+    window._apply_theme()
+    assert calls

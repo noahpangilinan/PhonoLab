@@ -583,6 +583,8 @@ class MainWindow(QMainWindow):
             editor.retheme()
         self.spectrum_panel.retheme()
         self.views_panel.retheme()
+        for tier_window in self.findChildren(TierWindow):
+            tier_window.retheme()
         self.start_page.update()
 
     def _on_system_colours_changed(self):

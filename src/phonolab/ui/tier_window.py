@@ -96,6 +96,12 @@ class TierWindow(QDialog):
         QShortcut(QKeySequence.StandardKey.Save, self, activated=self.save)
         self._refresh(fit=True)
 
+    def retheme(self):
+        style_plot(self.plot)
+        self.curve.setPen(pg.mkPen(COLORS["manipulation"], width=2))
+        self.points.setBrush(pg.mkBrush(COLORS["manipulation"]))
+        self.chosen.setPen(pg.mkPen(COLORS["cursor"], width=2))
+
     @property
     def tier(self) -> Tier:
         return self.file.tier
