@@ -67,7 +67,7 @@ class Tier:
 # --------------------------------------------------------------------------- Praat tier files
 
 
-def _write_tier(path: str, object_class: str, xmin: float, xmax: float, tier: Tier) -> None:
+def write_tier(path: str, object_class: str, xmin: float, xmax: float, tier: Tier) -> None:
     lines = ['File type = "ooTextFile"', f'Object class = "{object_class}"', "", repr(xmin), repr(xmax), str(len(tier))]
     for t, v in zip(tier.times, tier.values, strict=True):
         lines += [repr(float(t)), repr(float(v))]
@@ -93,7 +93,7 @@ def _load_tier(object_class: str, xmin: float, xmax: float, tier: Tier):
     fd, path = tempfile.mkstemp(suffix=f".{object_class}")
     os.close(fd)
     try:
-        _write_tier(path, object_class, xmin, xmax, tier)
+        write_tier(path, object_class, xmin, xmax, tier)
         return parselmouth.read(path)
     finally:
         os.remove(path)
@@ -118,14 +118,25 @@ def analyse(sound: Sound, s: ManipulationSettings) -> Tier:
     return _read_tier(call(_manipulation(sound, s), "Extract pitch tier"))
 
 
-def resynthesize(sound: Sound, s: ManipulationSettings, pitch: Tier, duration: Tier) -> tuple[np.ndarray, float]:
-    """PSOLA (overlap-add) resynthesis with the given pitch and duration tiers."""
+def resynthesize(
+    sound: Sound, s: ManipulationSettings, pitch: Tier, duration: Tier, gain: Tier | None = None
+) -> tuple[np.ndarray, float]:
+    """PSOLA (overlap-add) resynthesis with the given pitch and duration tiers, then any loudness changes."""
     manipulation = _manipulation(sound, s).copy()
     xmin, xmax = 0.0, sound.duration
     call([manipulation, _load_tier("PitchTier", xmin, xmax, pitch)], "Replace pitch tier")
     call([manipulation, _load_tier("DurationTier", xmin, xmax, duration)], "Replace duration tier")
     out = call(manipulation, "Get resynthesis (overlap-add)")
-    return np.asarray(out.values[0]), float(out.sampling_frequency)
+    samples, sr = np.asarray(out.values[0]), float(out.sampling_frequency)
+    if gain is not None and len(gain):
+        samples = apply_gain(samples, sr, gain, duration, sound.duration)
+    return samples, sr
+
+
+def apply_gain(samples: np.ndarray, sr: float, gain: Tier, duration: Tier, total: float) -> np.ndarray:
+    """Change loudness over time. ``gain`` is in dB on the original timeline, so follow any duration changes."""
+    moved = [map_time(duration, float(t), total) for t in gain.times]
+    return samples * 10 ** (np.interp(np.arange(len(samples)) / sr, moved, gain.values) / 20)
 
 
 def stylize(pitch: Tier, semitones: float, sound: Sound) -> Tier:
@@ -152,12 +163,21 @@ def flatten(pitch: Tier, start: float, end: float) -> Tier:
     return Tier(pitch.times, values)
 
 
-def set_duration_factor(duration: Tier, start: float, end: float, factor: float, edge: float = 1e-4) -> Tier:
+def set_duration_factor(duration: Tier, start: float, end: float, factor: float) -> Tier:
     """Scale ``[start, end]`` by ``factor``, leaving the rest at its current factor (Praat-style plateau)."""
-    outside_before = duration.value_at(start - edge, 1.0)
-    outside_after = duration.value_at(end + edge, 1.0)
-    tier = duration.without_range(start - edge, end + edge)
-    for t, v in ((start - edge, outside_before), (start, factor), (end, factor), (end + edge, outside_after)):
+    return _set_plateau(duration, start, end, factor, default=1.0)
+
+
+def set_gain(gain: Tier, start: float, end: float, decibels: float) -> Tier:
+    """Make ``[start, end]`` louder or quieter by ``decibels``, leaving the rest as it is."""
+    return _set_plateau(gain, start, end, decibels, default=0.0)
+
+
+def _set_plateau(tier: Tier, start: float, end: float, value: float, default: float, edge: float = 1e-4) -> Tier:
+    outside_before = tier.value_at(start - edge, default)
+    outside_after = tier.value_at(end + edge, default)
+    tier = tier.without_range(start - edge, end + edge)
+    for t, v in ((start - edge, outside_before), (start, value), (end, value), (end + edge, outside_after)):
         if t >= 0:
             tier = tier.with_point(t, v)
     return tier

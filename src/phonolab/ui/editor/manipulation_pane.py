@@ -132,15 +132,18 @@ class ManipulationPane(TimePane):
         self.duration_labels = []
         if self.state is None:
             return
-        d = self.state.duration
-        top = self.vb.viewRange()[1][1]
-        # Label each plateau (a run of equal factors other than 1) at its start.
-        for i in range(len(d)):
-            factor = d.values[i]
-            starts_plateau = i == 0 or d.values[i - 1] != factor
-            if abs(factor - 1.0) > 1e-9 and starts_plateau:
-                label = pg.TextItem(f"duration ×{factor:g}", color=COLORS["manipulation"], anchor=(0, 0))
-                label.setPos(d.times[i], top)
+        top, bottom = self.vb.viewRange()[1][1], self.vb.viewRange()[1][0]
+        self._label_plateaus(self.state.duration, 1.0, "duration ×{:g}", top, (0, 0))
+        self._label_plateaus(self.state.gain, 0.0, "loudness {:+g} dB", bottom, (0, 1))
+
+    def _label_plateaus(self, tier: Tier, neutral: float, text: str, y: float, anchor: tuple):
+        """Label each run of equal values other than ``neutral``, at its start."""
+        for i in range(len(tier)):
+            value = tier.values[i]
+            starts_plateau = i == 0 or tier.values[i - 1] != value
+            if abs(value - neutral) > 1e-9 and starts_plateau:
+                label = pg.TextItem(text.format(value), color=COLORS["manipulation"], anchor=anchor)
+                label.setPos(tier.times[i], y)
                 self.addItem(label, ignoreBounds=True)
                 self.duration_labels.append(label)
 

@@ -66,3 +66,26 @@ def test_tier_helpers():
     assert list(added.times) == [0.1, 0.2, 0.3]
     assert len(added.without_range(0.15, 0.25)) == 2
     assert tier == m.Tier(np.array([0.1, 0.3]), np.array([100.0, 200.0]))
+
+
+def test_gain_changes_only_its_stretch():
+    samples = np.ones(1000)
+    gain = m.set_gain(m.Tier.empty(), 0.2, 0.4, 6.0)
+    out = m.apply_gain(samples, 1000.0, gain, m.Tier.empty(), 1.0)
+    assert out[300] == pytest.approx(10 ** (6 / 20)) and out[100] == pytest.approx(1) and out[600] == pytest.approx(1)
+
+
+def test_gain_follows_duration_changes():
+    duration = m.set_duration_factor(m.Tier.empty(), 0.0, 0.5, 2.0)  # the first half doubles
+    gain = m.set_gain(m.Tier.empty(), 0.6, 0.8, -20.0)  # on the original timeline
+    out = m.apply_gain(np.ones(1500), 1000.0, gain, duration, 1.0)
+    assert out[1200] == pytest.approx(0.1) and out[700] == pytest.approx(1)
+
+
+def test_resynthesis_applies_loudness(vowel):
+    tier = m.analyse(vowel, SETTINGS)
+    gain = m.set_gain(m.Tier.empty(), 0.2, 0.6, -12.0)
+    quiet, sr = m.resynthesize(vowel, SETTINGS, tier, m.Tier.empty(), gain)
+    loud, _ = m.resynthesize(vowel, SETTINGS, tier, m.Tier.empty())
+    stretch = slice(int(0.3 * sr), int(0.5 * sr))
+    assert np.abs(quiet[stretch]).max() == pytest.approx(np.abs(loud[stretch]).max() * 10 ** (-12 / 20), rel=0.01)

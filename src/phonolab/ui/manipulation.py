@@ -1,4 +1,4 @@
-"""Editable pitch and duration tiers of a document, with undo."""
+"""Editable pitch, duration and loudness tiers of a document, with undo."""
 
 from __future__ import annotations
 
@@ -17,26 +17,29 @@ class ManipulationState(QObject):
         self.settings = settings
         self.pitch = original
         self.duration = Tier.empty()
+        self.gain = Tier.empty()  # dB
         self.undo_stack = undo_stack
 
     @property
     def is_modified(self) -> bool:
-        return self.pitch != self.original or len(self.duration) > 0
+        return self.pitch != self.original or len(self.duration) > 0 or len(self.gain) > 0
 
-    def apply(self, description: str, pitch: Tier | None = None, duration: Tier | None = None) -> None:
+    def apply(
+        self, description: str, pitch: Tier | None = None, duration: Tier | None = None, gain: Tier | None = None
+    ) -> None:
         """Record a change of either tier as one undoable step."""
-        after = (pitch if pitch is not None else self.pitch, duration if duration is not None else self.duration)
-        before = (self.pitch, self.duration)
-        if after[0] == before[0] and after[1] == before[1]:
+        before = (self.pitch, self.duration, self.gain)
+        after = tuple(new if new is not None else old for new, old in zip((pitch, duration, gain), before, strict=True))
+        if all(a == b for a, b in zip(after, before, strict=True)):
             return
         self.undo_stack.push(_ManipulationCommand(self, description, before, after))
 
-    def _set(self, pitch: Tier, duration: Tier) -> None:
-        self.pitch, self.duration = pitch, duration
+    def _set(self, pitch: Tier, duration: Tier, gain: Tier) -> None:
+        self.pitch, self.duration, self.gain = pitch, duration, gain
         self.changed.emit()
 
     def reset(self) -> None:
-        self.apply("Reset manipulation", self.original, Tier.empty())
+        self.apply("Reset manipulation", self.original, Tier.empty(), Tier.empty())
 
 
 class _ManipulationCommand(QUndoCommand):

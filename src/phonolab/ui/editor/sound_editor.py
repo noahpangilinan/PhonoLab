@@ -169,9 +169,9 @@ class SoundEditor(QWidget):
         self.manipulation_settings = prefs.analysis_settings("manipulation", ManipulationSettings)
         self.manager.job_done.connect(self._on_job_done)
         self.manager.job_failed.connect(self._on_job_failed)
-        self._resynthesis = None  # (pitch, duration, samples, sr) of the latest resynthesis
+        self._resynthesis = None  # (pitch, duration, gain, samples, sr) of the latest resynthesis
         self._after_resynthesis = None  # what to do when the pending resynthesis arrives
-        self._resynthesis_tiers = None  # (pitch, duration) submitted for the pending resynthesis
+        self._resynthesis_tiers = None  # (pitch, duration, gain) submitted for the pending resynthesis
         self.panes = [self.waveform, self.spectrogram, self.manipulation_pane]
         self.splitter = QSplitter(Qt.Orientation.Vertical)
         self.splitter.addWidget(self.waveform)
@@ -409,11 +409,11 @@ class SoundEditor(QWidget):
             self.message.emit("Show the manipulation first (View ▸ Show manipulation)")
             return
         cached = self._resynthesis
-        if cached and cached[0] is state.pitch and cached[1] is state.duration:
-            action(cached[2], cached[3])
+        if cached and cached[0] is state.pitch and cached[1] is state.duration and cached[2] is state.gain:
+            action(cached[3], cached[4])
             return
         self._after_resynthesis = lambda: self._with_resynthesis(action)
-        self._resynthesis_tiers = (state.pitch, state.duration)
+        self._resynthesis_tiers = (state.pitch, state.duration, state.gain)
         self.manager.submit(
             "resynthesis", manipulation.resynthesize, self.manipulation_settings, *self._resynthesis_tiers
         )
@@ -487,6 +487,14 @@ class SoundEditor(QWidget):
         if state := self._require_manipulation():
             duration = manipulation.set_duration_factor(state.duration, *self.axis.selection, factor)
             state.apply(f"Duration ×{factor:g}", duration=duration)
+
+    def set_loudness(self, decibels: float):
+        if not self.axis.selection:
+            self.message.emit("Select the stretch to make louder or quieter")
+            return
+        if state := self._require_manipulation():
+            gain = manipulation.set_gain(state.gain, *self.axis.selection, decibels)
+            state.apply(f"Loudness {decibels:+g} dB", gain=gain)
 
     def reset_manipulation(self):
         if state := self._require_manipulation():
