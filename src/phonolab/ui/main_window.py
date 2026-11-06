@@ -1103,7 +1103,7 @@ class MainWindow(QMainWindow):
         if editor is None or not self._confirm_discard(editor):
             return
         editor.stop()
-        editor.manager.close()
+        editor.shut_down()
         self.undo_group.removeStack(editor.doc.undo_stack)
         self.tabs.removeTab(index)
         editor.deleteLater()
@@ -1122,8 +1122,10 @@ class MainWindow(QMainWindow):
                 ev.ignore()
                 return
         self.player.stop()
+        self.spectrum_panel._timer.stop()
+        self.views_panel._timer.stop()
         for editor in self.editors():
-            editor.manager.close()
+            editor.shut_down()
             atexit.register(editor.doc.sound.release)
         self.qsettings.setValue("window/geometry", self.saveGeometry())
         self._show_docks(True)  # save the user's dock layout, not the start page's

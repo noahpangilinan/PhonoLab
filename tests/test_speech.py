@@ -9,7 +9,7 @@ import numpy as np  # noqa: E402
 import pytest  # noqa: E402
 from PyQt6.QtWidgets import QInputDialog, QMessageBox  # noqa: E402
 
-from phonolab.core import praat_engine, speech  # noqa: E402
+from phonolab.core import praat_engine, sound_ops, speech  # noqa: E402
 from phonolab.core.sound import Sound  # noqa: E402
 from phonolab.core.textgrid import Interval, IntervalTier, TextGrid  # noqa: E402
 from phonolab.ui.dialogs.speech_dialog import SpeechDialog  # noqa: E402
@@ -156,6 +156,15 @@ def test_alignment_finds_every_word_in_order(spoken):
     assert any(p[2].strip() for p in result.phonemes)
     starts = [w[0] for w in result.words]
     assert starts == sorted(starts)
+
+
+@needs_praat
+@pytest.mark.parametrize("rate", [16000.0, 48000.0])
+def test_alignment_doesnt_need_the_synthesizers_own_sampling_frequency(spoken, rate):
+    """Praat refuses to compare sounds at different rates, and synthesized speech is always at 44.1 kHz."""
+    sound, _ = spoken
+    other = sound_ops.resample(sound, sound_ops.ResampleSettings(sampling_rate=rate))
+    assert [w[2] for w in speech.align(other, 0.0, other.duration, SENTENCE).words if w[2].strip()] == SENTENCE.split()
 
 
 @needs_praat

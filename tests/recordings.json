@@ -1,0 +1,187 @@
+{
+ "sources": {
+  "arctic": "CMU ARCTIC, Carnegie Mellon University, free for any use: http://festvox.org/cmu_arctic/. Its phone labels are automatic, not hand-checked.",
+  "timit": "LDC's public sample of TIMIT (LDC93S1), with hand-checked labels. Fetched from LDC only; do not commit.",
+  "commons": "Wikimedia Commons, under each file's own licence."
+ },
+ "files": {
+  "arctic/slt/prompts.txt": {
+   "url": "http://festvox.org/cmu_arctic/cmu_arctic/cmu_us_slt_arctic/etc/txt.done.data",
+   "sha256": "60e3d9a4dc33732c9100baadd747312bdc1a200fc891766507397289753a25c7"
+  },
+  "arctic/slt/arctic_a0001.wav": {
+   "url": "http://festvox.org/cmu_arctic/cmu_arctic/cmu_us_slt_arctic/wav/arctic_a0001.wav",
+   "sha256": "7862eb2cccb56875910f6bf46f9b8d26dac36e7672829aabe3956b0837ae122e"
+  },
+  "arctic/slt/arctic_a0001.lab": {
+   "url": "http://festvox.org/cmu_arctic/cmu_arctic/cmu_us_slt_arctic/lab/arctic_a0001.lab",
+   "sha256": "a571964a75718145a57109ad2080f334b18844e53e3ddec8b5cc413da35be072"
+  },
+  "arctic/slt/arctic_a0002.wav": {
+   "url": "http://festvox.org/cmu_arctic/cmu_arctic/cmu_us_slt_arctic/wav/arctic_a0002.wav",
+   "sha256": "d09c9367d7e756cb5f6854d4e8a279e6e6e543fafeb4d04b32757c639f7f38d3"
+  },
+  "arctic/slt/arctic_a0002.lab": {
+   "url": "http://festvox.org/cmu_arctic/cmu_arctic/cmu_us_slt_arctic/lab/arctic_a0002.lab",
+   "sha256": "9de654651365813fa2d0c80ea659a6b4dab2151bb3e07b18d99f98ec6a9ba1d6"
+  },
+  "arctic/slt/arctic_a0003.wav": {
+   "url": "http://festvox.org/cmu_arctic/cmu_arctic/cmu_us_slt_arctic/wav/arctic_a0003.wav",
+   "sha256": "0b32e00846e132826f46d7e5cabb2d8b370a5dc654bac0447cb63285f81cc413"
+  },
+  "arctic/slt/arctic_a0003.lab": {
+   "url": "http://festvox.org/cmu_arctic/cmu_arctic/cmu_us_slt_arctic/lab/arctic_a0003.lab",
+   "sha256": "3c831c8bd6eb263d19a57ac67722504af3c572e6f6ff78ba46f4c5957eeab6e6"
+  },
+  "arctic/slt/arctic_a0004.wav": {
+   "url": "http://festvox.org/cmu_arctic/cmu_arctic/cmu_us_slt_arctic/wav/arctic_a0004.wav",
+   "sha256": "2a653cf74346ff24690f8a2abcff5091b81463f277b0062c851031a293f25167"
+  },
+  "arctic/slt/arctic_a0004.lab": {
+   "url": "http://festvox.org/cmu_arctic/cmu_arctic/cmu_us_slt_arctic/lab/arctic_a0004.lab",
+   "sha256": "330c510c290fdd0a91895a1be0184b803fa305db081d26f6d649e691f1d674ab"
+  },
+  "arctic/slt/arctic_a0005.wav": {
+   "url": "http://festvox.org/cmu_arctic/cmu_arctic/cmu_us_slt_arctic/wav/arctic_a0005.wav",
+   "sha256": "f93c823f955875d2389ae0f731a95128afb1ee096df7614e063e8b4b5695801d"
+  },
+  "arctic/slt/arctic_a0005.lab": {
+   "url": "http://festvox.org/cmu_arctic/cmu_arctic/cmu_us_slt_arctic/lab/arctic_a0005.lab",
+   "sha256": "886a4c6f61a7328d9886f5de5ca636c98a1204f9a4368559b6f3b36d3f79b37a"
+  },
+  "arctic/bdl/prompts.txt": {
+   "url": "http://festvox.org/cmu_arctic/cmu_arctic/cmu_us_bdl_arctic/etc/txt.done.data",
+   "sha256": "b4fea7527e547facb103615cf9a57f49886032fc65155ce8a3d6cf7bf2972437"
+  },
+  "arctic/bdl/arctic_a0001.wav": {
+   "url": "http://festvox.org/cmu_arctic/cmu_arctic/cmu_us_bdl_arctic/wav/arctic_a0001.wav",
+   "sha256": "2594562568c97203d6c3c2c2ff87b9a7c62389100a014934ab0ad39d15af0384"
+  },
+  "arctic/bdl/arctic_a0001.lab": {
+   "url": "http://festvox.org/cmu_arctic/cmu_arctic/cmu_us_bdl_arctic/lab/arctic_a0001.lab",
+   "sha256": "557073411fca0cb54c215eeafc1d19a228bce31298edd82e39b666779e51fb9d"
+  },
+  "arctic/bdl/arctic_a0002.wav": {
+   "url": "http://festvox.org/cmu_arctic/cmu_arctic/cmu_us_bdl_arctic/wav/arctic_a0002.wav",
+   "sha256": "88b2c3f29f696637ec34f8a031964920d7e187a903ba88fd720d3cb1b0d50c2a"
+  },
+  "arctic/bdl/arctic_a0002.lab": {
+   "url": "http://festvox.org/cmu_arctic/cmu_arctic/cmu_us_bdl_arctic/lab/arctic_a0002.lab",
+   "sha256": "61cec534cb78fde4b30e0a08184d555721bf14b461dbb65501f1d346f4943fcd"
+  },
+  "arctic/bdl/arctic_a0003.wav": {
+   "url": "http://festvox.org/cmu_arctic/cmu_arctic/cmu_us_bdl_arctic/wav/arctic_a0003.wav",
+   "sha256": "6bf2ec5e40a8a01a690d7aa5d1aa3a1489baae614850c7a716bf00092b005028"
+  },
+  "arctic/bdl/arctic_a0003.lab": {
+   "url": "http://festvox.org/cmu_arctic/cmu_arctic/cmu_us_bdl_arctic/lab/arctic_a0003.lab",
+   "sha256": "a490def146243f1507fe480685b0c06885055b3717a8181092c2afc40c8e89f0"
+  },
+  "arctic/bdl/arctic_a0004.wav": {
+   "url": "http://festvox.org/cmu_arctic/cmu_arctic/cmu_us_bdl_arctic/wav/arctic_a0004.wav",
+   "sha256": "9014c7af0c450ffab8a64f211559ed6eb61d1eb6c8a8288cca40325e64f702e7"
+  },
+  "arctic/bdl/arctic_a0004.lab": {
+   "url": "http://festvox.org/cmu_arctic/cmu_arctic/cmu_us_bdl_arctic/lab/arctic_a0004.lab",
+   "sha256": "33b40cf3b0968ed54846d7131743cbfe31f5766092e0b05e81e21ec4d4be6f4e"
+  },
+  "arctic/bdl/arctic_a0005.wav": {
+   "url": "http://festvox.org/cmu_arctic/cmu_arctic/cmu_us_bdl_arctic/wav/arctic_a0005.wav",
+   "sha256": "b654e28a68b0f49d40f715744f99f4bba338b1f66e61b58e428588e886d8fa1f"
+  },
+  "arctic/bdl/arctic_a0005.lab": {
+   "url": "http://festvox.org/cmu_arctic/cmu_arctic/cmu_us_bdl_arctic/lab/arctic_a0005.lab",
+   "sha256": "a570ac7c4524a1f76ca29a3ae7a874e9248fb094bbb961215852f1ceca0db07f"
+  },
+  "arctic/ksp/prompts.txt": {
+   "url": "http://festvox.org/cmu_arctic/cmu_arctic/cmu_us_ksp_arctic/etc/txt.done.data",
+   "sha256": "60e3d9a4dc33732c9100baadd747312bdc1a200fc891766507397289753a25c7"
+  },
+  "arctic/ksp/arctic_a0001.wav": {
+   "url": "http://festvox.org/cmu_arctic/cmu_arctic/cmu_us_ksp_arctic/wav/arctic_a0001.wav",
+   "sha256": "1f7c300199340733daf09fb440c64517047124c2703048a3c6b965a39e17553a"
+  },
+  "arctic/ksp/arctic_a0001.lab": {
+   "url": "http://festvox.org/cmu_arctic/cmu_arctic/cmu_us_ksp_arctic/lab/arctic_a0001.lab",
+   "sha256": "aebc61d548bec1ffcc6d75ad0b1c6d2f30ce3c42b082838dabb6bc5a1be6d4c3"
+  },
+  "arctic/ksp/arctic_a0002.wav": {
+   "url": "http://festvox.org/cmu_arctic/cmu_arctic/cmu_us_ksp_arctic/wav/arctic_a0002.wav",
+   "sha256": "2ff5029c6f4ded953b9bb964935913f639e8d6b021fc7c7428d15e605dcab06d"
+  },
+  "arctic/ksp/arctic_a0002.lab": {
+   "url": "http://festvox.org/cmu_arctic/cmu_arctic/cmu_us_ksp_arctic/lab/arctic_a0002.lab",
+   "sha256": "a9f47de2dd9cade467826cc8097c6121196b762059ce047c643c5fffa3b758e2"
+  },
+  "arctic/ksp/arctic_a0003.wav": {
+   "url": "http://festvox.org/cmu_arctic/cmu_arctic/cmu_us_ksp_arctic/wav/arctic_a0003.wav",
+   "sha256": "0af26fb7e5488ee9536b0e0ae0c56be9f8a598e190faf5c1088d3a6697719708"
+  },
+  "arctic/ksp/arctic_a0003.lab": {
+   "url": "http://festvox.org/cmu_arctic/cmu_arctic/cmu_us_ksp_arctic/lab/arctic_a0003.lab",
+   "sha256": "03d6e83fd28b9f4a1bd591af32c4d8d4cc1a86d18af0be794a1ba7b72e79024f"
+  },
+  "arctic/awb/prompts.txt": {
+   "url": "http://festvox.org/cmu_arctic/cmu_arctic/cmu_us_awb_arctic/etc/txt.done.data",
+   "sha256": "5dafa7bc521ac8f8a8f8eb6d5104a037e71c08665ba44e1357c5e375fb1724d4"
+  },
+  "arctic/awb/arctic_a0001.wav": {
+   "url": "http://festvox.org/cmu_arctic/cmu_arctic/cmu_us_awb_arctic/wav/arctic_a0001.wav",
+   "sha256": "d1ebf15b59fb1887bb0282bbff508c1db28a706b98cfa8a683a85a98fe2b7567"
+  },
+  "arctic/awb/arctic_a0001.lab": {
+   "url": "http://festvox.org/cmu_arctic/cmu_arctic/cmu_us_awb_arctic/lab/arctic_a0001.lab",
+   "sha256": "3a28ac7ba62fa167ebbdea0554e854c09d8be9f67ef05c561a57a6a4404c4d8b"
+  },
+  "arctic/awb/arctic_a0002.wav": {
+   "url": "http://festvox.org/cmu_arctic/cmu_arctic/cmu_us_awb_arctic/wav/arctic_a0002.wav",
+   "sha256": "26d811548f811128ebe3e969fe0fa74f91c5fad9097e2057f16ffbe4af0e0105"
+  },
+  "arctic/awb/arctic_a0002.lab": {
+   "url": "http://festvox.org/cmu_arctic/cmu_arctic/cmu_us_awb_arctic/lab/arctic_a0002.lab",
+   "sha256": "5137bb3a257c6a412de3a484468b0eb8d8d48a540c1fb15726eb0e5cce93ccd6"
+  },
+  "arctic/awb/arctic_a0003.wav": {
+   "url": "http://festvox.org/cmu_arctic/cmu_arctic/cmu_us_awb_arctic/wav/arctic_a0003.wav",
+   "sha256": "ad01ac37983ff61b251115e0461a36cd7af014f432084313a2c00205443c3d70"
+  },
+  "arctic/awb/arctic_a0003.lab": {
+   "url": "http://festvox.org/cmu_arctic/cmu_arctic/cmu_us_awb_arctic/lab/arctic_a0003.lab",
+   "sha256": "300a2c7e7785fb5e2158baff430e8a656e31f1fcdaea423cb0e0b38e564d3b58"
+  },
+  "arctic/egg/slt_a0001.wav": {
+   "url": "http://festvox.org/cmu_arctic/cmu_arctic/orig/cmu_us_slt_arctic-WAVEGG.zip",
+   "member": "arctic_a0001.wav",
+   "sha256": "ef03538338a492047ff32cee97673e6bc0bff3826963cb9d5e246f03365edd5f"
+  },
+  "arctic/egg/bdl_a0001.wav": {
+   "url": "http://festvox.org/cmu_arctic/cmu_arctic/orig/cmu_us_bdl_arctic-WAVEGG.zip",
+   "member": "arctic_a0001.wav",
+   "sha256": "a57028d0749e153673c1622653e17352ff4f2a75d0478f3382aca543a999137d"
+  },
+  "timit/ldc93s1.wav": {
+   "url": "https://catalog.ldc.upenn.edu/desc/addenda/LDC93S1.wav",
+   "sha256": "c7e8b51db10ec6a2aea8c92376f2b88af14c2b4950ed82db3d605a4b718c8f35"
+  },
+  "timit/ldc93s1.phn": {
+   "url": "https://catalog.ldc.upenn.edu/desc/addenda/LDC93S1.phn",
+   "sha256": "069015f10f74af9921c91cf1f203c8e4cdb77a259b12177fb8c3e43a9de3be5e"
+  },
+  "timit/ldc93s1.wrd": {
+   "url": "https://catalog.ldc.upenn.edu/desc/addenda/LDC93S1.wrd",
+   "sha256": "fcac74838553186a60691ff468a3c10dd2e943c27195dcd45a656e47b510231a"
+  },
+  "timit/ldc93s1.txt": {
+   "url": "https://catalog.ldc.upenn.edu/desc/addenda/LDC93S1.txt",
+   "sha256": "0b4ffafce18d6ec0df273c0189202a7c186cd0bbb9b40659490f5f2ad99e70a5"
+  },
+  "commons/De-essen.ogg": {
+   "url": "https://upload.wikimedia.org/wikipedia/commons/5/51/De-essen.ogg",
+   "sha256": "b28444a58cd1312ba0259dc678a88f7ac5bd49a28e81c223c2b8c73841237f18"
+  },
+  "commons/Navajo_numbers_1_to_10.mp3": {
+   "url": "https://upload.wikimedia.org/wikipedia/commons/c/ca/Navajo_numbers_1_to_10.mp3",
+   "sha256": "970eede722939c29768d474b5d22e027b3e72c2baa117f1a026a369397b9f22d"
+  }
+ }
+}

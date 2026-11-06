@@ -243,6 +243,8 @@ def align(sound: Sound, start: float, end: float, text: str, language: str = DEF
             'grid = To TextGrid: "sentence", ""\n'
             "Set interval text: 1, 1, text$\n"
             f'synth = Create SpeechSynthesizer: "{language}", "Male1"\n'
+            # Praat refuses to compare sounds with different sampling frequencies.
+            f'Speech output settings: {round(part.sampling_rate)}, 0.01, 1, 1, 175, "IPA"\n'
             "selectObject: synth, s, grid\n"
             "To TextGrid (align): 1, 1, 1, -35, 0.1, 0.1\n"
             'Save as text file: folder$ + "/aligned.TextGrid"\n'

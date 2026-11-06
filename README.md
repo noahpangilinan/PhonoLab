@@ -355,8 +355,9 @@ intervals on tier…* does it for every labelled interval. Results go on tiers n
 `sentence_words` and `sentence_phonemes`. Aligning again replaces only that stretch, and it's one undo step.
 
 Alignment works by comparing your recording with a synthetic reading of the text, so treat its boundaries as
-a good first pass to check by hand rather than as final phonetic segmentation. Both tools need the bundled
-Praat program.
+a good first pass to check by hand rather than as final phonetic segmentation. On a hand-labelled TIMIT sentence,
+word starts were 24 ms from the labels on average, and 50 ms at worst. That's one sentence of careful read speech,
+so expect more on conversation or noisy recordings. Both tools need the bundled Praat program.
 
 ## Editing the audio
 
@@ -813,8 +814,11 @@ make format         # ruff format
 make package        # PyInstaller build: dist/PhonoLab.exe, or dist/PhonoLab.app on macOS
 ```
 
+Some tests use real speech, which isn't in the repository. `python tests/fetch_recordings.py` downloads about
+3.4 MB into `tests/recordings/`, checking each file against `tests/recordings.json`. Those tests skip without them.
+
 About the tests:
-- They synthesise their own signals: vowels from pulse trains through resonators, sines, harmonic
+- Most synthesise their own signals: vowels from pulse trains through resonators, sines, harmonic
   complexes, AAC files.
 - They compare against Praat wherever possible: TextGrids round-trip through Praat in both directions,
   and the IPA table is checked against Praat's own conversion.

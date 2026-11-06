@@ -276,6 +276,12 @@ class SoundEditor(QWidget):
         if not self.manager.analyses_available:
             self._on_window_changed(False)
 
+    def shut_down(self):
+        """Stop everything that could still fire: a timer left running would act on a closed document."""
+        self.spectrogram._debounce.stop()
+        self._playhead_timer.stop()
+        self.manager.close()
+
     # ------------------------------------------------------------------ editing the audio
 
     def _on_sound_changed(self):

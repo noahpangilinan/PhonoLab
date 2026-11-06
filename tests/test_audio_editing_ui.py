@@ -270,6 +270,26 @@ def test_a_resynthesis_of_the_old_audio_never_plays_after_an_edit(window, qtbot,
     qtbot.waitUntil(lambda: not window._busy, timeout=10000)
 
 
+def test_closing_a_tab_right_after_an_edit_leaves_nothing_running(window, qtbot, wav):  # noqa: F811
+    editor = opened(window, wav, qtbot)
+    editor.axis.set_selection(0.2, 0.3)
+    window.cut_sound()
+    assert editor.spectrogram._debounce.isActive()
+    window.close_tab(0)
+    assert not editor.spectrogram._debounce.isActive() and not editor._playhead_timer.isActive()
+
+
+def test_quitting_right_after_an_edit_leaves_nothing_running(window, qtbot, wav):  # noqa: F811
+    editor = opened(window, wav, qtbot)
+    window.spectrum_panel.show()
+    window.views_panel.show()
+    editor.axis.set_selection(0.2, 0.3)
+    window.cut_sound()
+    window.close()
+    assert not editor.spectrogram._debounce.isActive()
+    assert not window.spectrum_panel._timer.isActive() and not window.views_panel._timer.isActive()
+
+
 def test_playback_stops_for_an_edit(window, qtbot, wav, monkeypatch):  # noqa: F811
     editor = opened(window, wav, qtbot)
     stopped = []

@@ -29,6 +29,11 @@ jobs:
       - name: Fetch Praat
         run: uv run python packaging/fetch_praat.py
 
+      # A source being down shouldn't stop the build: tests needing these recordings skip without them.
+      - name: Fetch test recordings
+        continue-on-error: true
+        run: uv run python tests/fetch_recordings.py
+
       # A failure doesn't stop the build, so the disk images still appear; the last step fails the run.
       - name: Run tests
         id: tests
