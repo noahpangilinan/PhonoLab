@@ -56,9 +56,14 @@ TextGrids are read and written in Praat's own formats, so you can move between P
 | **Long recordings** | Hours-long files open in a small amount of memory, with analyses on the visible stretch |
 | **Speed** | Analyses run in background processes, so the window never freezes. The waveform is drawn at screen resolution, and the spectrogram is recomputed for what you're looking at. Five-minute recordings stay smooth. |
 | **Annotation** | Interval and point tiers, boundary editing by keyboard or mouse, type-to-label, IPA chart, Praat backslash codes shown as IPA, search, undo/redo |
-| **Measurement** | Live readout under the mouse, selection statistics, pitch/formant/intensity queries, voice report (jitter, shimmer, HNR), spectral slice, LTAS, spectral moments, CPPS |
+| **Measurement** | Live readout under the mouse, selection statistics, pitch/formant/intensity queries, voice report (jitter, shimmer, HNR), spectral slice, LTAS, LPC and excitation spectra, spectral moments, CPPS, formant ceiling comparison (FormantPath), cepstrogram, cochleagram and MFCC views |
 | **Methods** | Pitch by filtered or raw autocorrelation and cross-correlation, or subharmonic summation; formants by Burg or robust LPC |
-| **Manipulation** | Editable pitch contour and duration factors with PSOLA resynthesis |
+| **Corrections** | Unvoice stretches, fix octave errors, add or remove pulses; fixes carry through to queries, reports, batch runs and figures |
+| **Channels** | Measure one channel of a stereo or multichannel sound, or mute channels while listening |
+| **Manipulation** | Editable pitch contour, duration factors and loudness with PSOLA resynthesis, plus a tier editor for Praat PitchTier, DurationTier and similar files |
+| **Audio editing** | Cut, copy and paste sound in place, with TextGrid labels and corrections following every edit, optional crossfaded joins, and undo |
+| **Speech synthesis and alignment** | Text to speech in 133 languages via eSpeak, and automatic word and phoneme alignment of labelled intervals |
+| **Corpora** | Open TIMIT and Buckeye recordings with their annotations, ESPS label files, and any annotation file Praat reads |
 | **Sound operations** | Record, generate tones and noise, Klatt vowel synthesis, extract, resample, filter, scale, reverse, mono, concatenate |
 | **Automation** | Folder-wide batch measurement to CSV (whole files or per labelled interval), and a script window for Praat scripts or Python |
 | **Output** | Publication figures (PDF/SVG/PNG), CSV tables, audio export in five formats |
@@ -851,12 +856,11 @@ Code style is ruff with a 120-character line length. Commit messages are short s
 
 ## Not yet covered
 
-- Interface for what Praat added after 6.1.38, such as filtered pitch methods, FormantPath and speech
-  recognition. (H1–H2 already appears in the voice report.)
+- Speech recognition, which Praat 7 added. (Filtered pitch methods, FormantPath and H1–H2 are covered.)
 - Articulatory synthesis.
 - Praat's statistics and learning tools (Table, PCA, discriminant analysis, OT grammars) and listening
   experiments (ExperimentMFC).
-- Binary TextGrid files and Praat's other object types (e.g. editing a standalone PitchTier).
+- Binary TextGrid files, and Praat object types beyond sounds, TextGrids and the tier files PhonoLab edits.
 
 ---
 
